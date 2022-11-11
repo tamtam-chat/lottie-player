@@ -1,10 +1,20 @@
 /** @type {import('vite').UserConfig} */
 export default {
     build: {
+        outDir: './dist',
+        assetsDir: '',
+        sourcemap: true,
         lib: {
             entry: './src/player.ts',
-            formats: ['es']
+            formats: ['es'],
+            fileName: 'player'
         },
-        assetsInlineLimit: 500_000
+    },
+    worker: {
+        rollupOptions: {
+            output: {
+                entryFileNames: '[name].js'
+            }
+        }
     }
 }

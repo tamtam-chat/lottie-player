@@ -1,5 +1,7 @@
 import type { FrameData, ID, PlayerOptions, Request, Response, ResponseFrame, WorkerInfo, Config } from './types';
-import RLottieWorker from './worker?worker';
+import RLottieWorker from './worker?worker&url';
+
+export type { PlayerOptions, Config, ID };
 
 let globalId = 0;
 
@@ -8,7 +10,8 @@ const instances = new Map<ID, Player[]>();
 const lastFrames = new Map<ID, FrameData>();
 const config: Config = {
     maxWorkers: 4,
-    playersPerWorker: 5
+    playersPerWorker: 5,
+    workerUrl: RLottieWorker
 };
 
 /**
@@ -345,8 +348,9 @@ function allocWorker(): Worker {
         minPlayersWorker.players++;
         return minPlayersWorker.worker;
     }
-
-    const worker = new RLottieWorker();
+    const worker = new Worker(new URL(config.workerUrl, import.meta.url), {
+        type: 'module'
+    });
     worker.addEventListener('message', handleMessage);
     workerPool.push({ worker, players: 1 });
     return worker;

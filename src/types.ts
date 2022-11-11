@@ -6,6 +6,9 @@ export interface Config {
 
     /** Оптимальное количество плееров в воркере */
     playersPerWorker: number;
+
+    /** Путь к воркеру */
+    workerUrl: string;
 }
 
 export interface WorkerInfo {

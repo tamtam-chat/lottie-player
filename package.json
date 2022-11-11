@@ -1,15 +1,31 @@
 {
   "name": "@tamtam-chat/lottie-player",
-  "private": true,
+  "description": "Универсальный плеер Lottie-анимаций",
+  "author": "Sergey Chikuyonok <serge.che@gmail.com>",
+  "license": "ISC",
+  "keywords": ["lottie"],
   "version": "0.0.0",
   "type": "module",
+  "main": "./dist/player.js",
+  "types": "./dist/player.d.ts",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build && tsc",
     "preview": "vite preview"
   },
   "devDependencies": {
     "typescript": "^4.6.4",
     "vite": "^3.2.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tamtam-chat/lottie-player.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tamtam-chat/lottie-player/issues"
+  },
+  "homepage": "https://github.com/tamtam-chat/lottie-player#readme",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   }
 }
