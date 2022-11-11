@@ -33,7 +33,6 @@ class WorkerPlayerInstace {
             }
             this.player = new RlottieWasm(options.data);
             this.totalFrames = this.player.frames();
-            console.log('created player for movie with %d frames', this.totalFrames);
         }).catch((err) => {
             console.error(err);
             this.disposed = true;
@@ -98,7 +97,6 @@ class WorkerPlayerInstace {
     }
 
     dispose() {
-        console.log('dispose worker player');
         this.player?.delete?.();
         this.player = null;
         this.disposed = true;
