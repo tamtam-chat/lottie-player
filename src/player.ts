@@ -1,21 +1,27 @@
-import type { FrameData, ID, PlayerOptions, Request, Response, ResponseFrame } from './types';
+import type { FrameData, ID, PlayerOptions, Request, Response, ResponseFrame, WorkerInfo, Config } from './types';
 import RLottieWorker from './worker?worker';
 
 let globalId = 0;
 
-const worker = new RLottieWorker();
+const workerPool: WorkerInfo[] = [];
 const instances = new Map<ID, Player[]>();
 const lastFrames = new Map<ID, FrameData>();
+const config: Config = {
+    maxWorkers: 4,
+    playersPerWorker: 5
+};
 
 /**
  * Создаёт плеер для указанной анимации
  */
 export function createPlayer(options: PlayerOptions): Player {
-    return new Player(worker, options);
+    return new Player(options);
 }
 
 /**
- * Универсальный механизм для удаления плеера
+ * Универсальный механизм для удаления плеера: можно передать сам плеер или
+ * `<canvas>`, в котором рисуется анимация. Если указать `id` анимации, то будут
+ * удалены все плееры с этим идентификатором.
  */
 export function dipsosePlayer(player: ID | HTMLCanvasElement | Player) {
     if (player instanceof Player) {
@@ -36,30 +42,45 @@ export function dipsosePlayer(player: ID | HTMLCanvasElement | Player) {
 }
 
 /**
+ * Обновление параметров контроллера плеера
+ */
+export function updateConfig(data: Partial<Config>): void {
+    Object.assign(config, data);
+}
+
+/**
  * Запуск воспроизведения всех зарегистрированных плееров
  */
 export function play() {
-    worker.postMessage({ type: 'global-playback', paused: false });
+    workerPool.forEach(({ worker }) => worker.postMessage({ type: 'global-playback', paused: false }));
 }
 
 /**
  * Остановка воспроизведения всех зарегистрированных плееров
  */
 export function pause() {
-    worker.postMessage({ type: 'global-playback', paused: true });
+    workerPool.forEach(({ worker }) => worker.postMessage({ type: 'global-playback', paused: true }));
+}
+
+/**
+ * Возвращает внутренние данные модуля.
+ * *Использовать только для отладки и тестирования!*
+ */
+export function getInternals() {
+    return { workerPool, instances, lastFrames, config };
 }
 
 export class Player {
     public readonly id: ID;
     public canvas: HTMLCanvasElement | null = null;
-    private worker: Worker | null = null;
+    public worker: Worker | null = null;
     public loop: boolean;
     public dpr: number;
     public paused = false;
     public frame = -1;
     public totalFrames = -1;
 
-    constructor(worker: Worker, options: PlayerOptions) {
+    constructor(options: PlayerOptions) {
         const { canvas } = options;
         this.canvas = canvas;
         this.id = options.id ?? `__lottie${globalId++}`;
@@ -67,9 +88,8 @@ export class Player {
         this.loop = options.loop ?? false;
 
         this.resize(canvas.width, canvas.height);
-        addInstance(this);
 
-        this.worker = worker;
+        this.worker = addInstance(this);
         this.send({
             type: 'create',
             data: {
@@ -180,11 +200,14 @@ export class Player {
 
 /**
  * Добавляет указанный экземпляр в общую таблицу плееров
+ * @returns Вернёт воркер, через который надо общаться с бэком
  */
-function addInstance(player: Player) {
+function addInstance(player: Player): Worker {
     const { id } = player;
     const items = instances.get(id);
-    if (items) {
+    let worker: Worker | null = null;
+    if (items?.length) {
+        worker = items[0].worker;
         items.push(player);
     } else {
         instances.set(id, [player]);
@@ -194,6 +217,8 @@ function addInstance(player: Player) {
     if (frame) {
         renderFrameForInstance(player, frame);
     }
+
+    return worker || allocWorker();
 }
 
 /**
@@ -213,6 +238,7 @@ function removeInstance(player: Player): boolean {
         if (!items.length) {
             instances.delete(id);
             lastFrames.delete(id);
+            releaseWorker(player.worker!);
             return true;
         }
 
@@ -285,18 +311,59 @@ function renderFrame(payload: ResponseFrame) {
     }
 }
 
-function setupWorker(worker: Worker) {
-    worker.addEventListener('message', (evt: MessageEvent<Response>) => {
-        const payload = evt.data;
-        if (payload.type === 'frame') {
-            renderFrame(payload);
-        }
-    });
-}
-
 function isMasterPlayer(player: Player, frameData: FrameData): boolean {
     return player.width === frameData.image.width && player.height === frameData.image.height
 }
 
-// TODO сделать пул воркеров
-setupWorker(worker);
+function handleMessage(evt: MessageEvent<Response>) {
+    const payload = evt.data;
+    if (payload.type === 'frame') {
+        renderFrame(payload);
+    }
+}
+
+/**
+ * Выделяет воркер для RLottie: либо создаёт новый, либо переиспользует существующий
+ */
+function allocWorker(): Worker {
+    let minPlayersWorker: WorkerInfo | undefined;
+    for (let i = 0; i < workerPool.length; i++) {
+        const info = workerPool[i];
+        if (info.players < config.playersPerWorker) {
+            info.players++;
+            return info.worker;
+        }
+
+        if (!minPlayersWorker || minPlayersWorker.players > info.players) {
+            minPlayersWorker = info;
+        }
+    }
+
+    // Если добрались сюда, значит, нет подходящего инстанса. Либо создадим новый,
+    // либо будем превышать лимиты на существующих
+    if (workerPool.length >= config.maxWorkers && minPlayersWorker) {
+        minPlayersWorker.players++;
+        return minPlayersWorker.worker;
+    }
+
+    const worker = new RLottieWorker();
+    worker.addEventListener('message', handleMessage);
+    workerPool.push({ worker, players: 1 });
+    return worker;
+}
+
+/**
+ * Освобождает указанный инстанс воркера
+ */
+function releaseWorker(worker: Worker) {
+    const itemIx = workerPool.findIndex(item => item.worker === worker);
+    if (itemIx !== -1) {
+        const item = workerPool[itemIx]!;
+        item.players--;
+        if (item.players <= 0) {
+            worker.removeEventListener('message', handleMessage);
+            worker.terminate();
+            workerPool.splice(itemIx, 1);
+        }
+    }
+}
