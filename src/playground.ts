@@ -1,4 +1,3 @@
-import './assets/style.css';
 import { createPlayer } from './player';
 import animation from './assets/acrobatics.json?inline';
 
