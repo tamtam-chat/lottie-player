@@ -1,7 +1,7 @@
-import type { FrameData, ID, PlayerOptions, Request, Response, ResponseFrame, WorkerInfo, Config } from './types';
+import type { FrameData, ID, PlayerOptions, Request, Response, ResponseFrame, WorkerInfo, Config, EventPayload } from './types';
 import RLottieWorker from './worker?worker&url';
 
-export type { PlayerOptions, Config, ID };
+export type { PlayerOptions, Config, ID, EventPayload };
 
 let globalId = 0;
 
@@ -26,7 +26,7 @@ export function createPlayer(options: PlayerOptions): Player {
  * `<canvas>`, в котором рисуется анимация. Если указать `id` анимации, то будут
  * удалены все плееры с этим идентификатором.
  */
-export function dipsosePlayer(player: ID | HTMLCanvasElement | Player) {
+export function disposePlayer(player: ID | HTMLCanvasElement | Player) {
     if (player instanceof Player) {
         player.dispose();
     } else if (player && typeof player === 'object' && 'nodeType' in player) {
@@ -93,16 +93,7 @@ export class Player {
         this.resize(canvas.width, canvas.height);
 
         this.worker = addInstance(this);
-        this.send({
-            type: 'create',
-            data: {
-                id: this.id,
-                data: options.movie,
-                width: this.width,
-                height:this.height,
-                loop: this.loop
-            }
-        });
+        this.setupMovie(options.movie);
     }
 
     get width() {
@@ -132,6 +123,7 @@ export class Player {
             id: this.id,
             paused
         });
+        this.dispatch( paused ? { type: 'pause' } : { type: 'play' });
     }
 
     restart() {
@@ -194,10 +186,55 @@ export class Player {
 
         this.worker = this.canvas = null;
         this.frame = this.totalFrames = -1;
+        this.dispatch({ type: 'dispose' });
     }
 
     private send(message: Request) {
         this.worker?.postMessage(message);
+    }
+
+    private setupMovie(movie: PlayerOptions['movie']) {
+        // NB: не используем async/await для поддержки старых браузеров
+        return Promise.resolve().then(() => {
+            if (typeof movie === 'string') {
+                if (/^(https?|data|file):/.test(movie)) {
+                    return fetch(movie, { mode: 'cors' }).then(res => {
+                        if (res.ok) {
+                            return res.text();
+                        }
+
+                        throw new Error(`Invalid response: ${res.status}: ${res.statusText}`);
+                    });
+                }
+
+                return movie;
+            }
+
+            return JSON.stringify(movie);
+        })
+        .then(data => {
+            this.send({
+                type: 'create',
+                data: {
+                    id: this.id,
+                    data,
+                    width: this.width,
+                    height:this.height,
+                    loop: this.loop
+                }
+            });
+            this.dispatch({ type: 'mount' });
+        })
+        .catch(error => {
+            this.dispatch({ type: 'error', error });
+            throw error;
+        });
+    }
+
+    private dispatch(detail: EventPayload) {
+        if (this.canvas) {
+            dispatchEvent(this.canvas, detail);
+        }
     }
 }
 
@@ -278,8 +315,12 @@ function renderFrameForInstance(instance: Player, data: FrameData, image?: HTMLC
         } else {
             ctx.putImageData(data.image, 0, 0);
         }
+        const isInitial = instance.frame === -1;
         instance.frame = data.frame;
         instance.totalFrames = data.totalFrames;
+        if (isInitial) {
+            dispatchEvent(canvas, { type: 'initial-render' });
+        }
     }
 }
 
@@ -348,7 +389,7 @@ function allocWorker(): Worker {
         minPlayersWorker.players++;
         return minPlayersWorker.worker;
     }
-    const worker = new Worker(new URL(config.workerUrl, import.meta.url), {
+    const worker = new Worker(config.workerUrl, {
         type: 'module'
     });
     worker.addEventListener('message', handleMessage);
@@ -370,4 +411,8 @@ function releaseWorker(worker: Worker) {
             workerPool.splice(itemIx, 1);
         }
     }
+}
+
+function dispatchEvent(elem: Element, detail: EventPayload) {
+    elem.dispatchEvent?.(new CustomEvent('lottie', { detail }));
 }

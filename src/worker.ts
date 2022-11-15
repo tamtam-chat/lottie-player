@@ -26,6 +26,9 @@ class WorkerPlayerInstace {
         this.width = options.width || 100;
         this.height = options.height || 100;
         this.loop = options.loop ?? true;
+        if (typeof options.autoplay === 'boolean') {
+            this.paused = !options.autoplay;
+        }
 
         lottieLoader.then(({ RlottieWasm }) => {
             if (this.disposed) {

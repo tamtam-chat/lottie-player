@@ -3,7 +3,9 @@
   "description": "Универсальный плеер Lottie-анимаций",
   "author": "Sergey Chikuyonok <serge.che@gmail.com>",
   "license": "ISC",
-  "keywords": ["lottie"],
+  "keywords": [
+    "lottie"
+  ],
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/player.js",

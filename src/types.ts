@@ -34,8 +34,11 @@ export interface AdjustablePlayerOptions {
 }
 
 export interface PlayerOptions {
-    /** JSON-данные с Lottie-анимацией */
-    movie: string;
+    /**
+     * Lottie-анимация. Это может быть URL (начинается с протокола) либо сам
+     * JSON-файл в виде строки или объекта
+     */
+    movie: string | object;
 
     /** Указатель на элемент <canvas>, где нужно рисовать анимацию */
     canvas: HTMLCanvasElement;
@@ -73,6 +76,9 @@ export interface WorkerPlayerOptions extends AdjustablePlayerOptions {
 
     /** Данные с анимацией (JSON) */
     data: string;
+
+    /** Сразу воспроизводить анимацию. По умолчанию `true` */
+    autoplay?: boolean;
 }
 
 export type Response = ResponseFrame;
@@ -142,4 +148,32 @@ export interface RequestRestart {
  export interface RequestGlobalTogglePlayback {
     type: 'global-playback';
     paused: boolean;
+}
+
+export type EventPayload = EventPayloadMount | EventPayloadDispose | EventPayloadInitialRender
+    | EventPayloadPlay | EventPayloadPause | EventPayloadError;
+
+export interface EventPayloadMount {
+    type: 'mount';
+}
+
+export interface EventPayloadDispose {
+    type: 'dispose';
+}
+
+export interface EventPayloadInitialRender {
+    type: 'initial-render';
+}
+
+export interface EventPayloadPlay {
+    type: 'play';
+}
+
+export interface EventPayloadPause {
+    type: 'pause';
+}
+
+export interface EventPayloadError {
+    type: 'error';
+    error: Error;
 }
