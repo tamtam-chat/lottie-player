@@ -85,12 +85,15 @@ export class Player {
 
     constructor(options: PlayerOptions) {
         const { canvas } = options;
-        this.canvas = canvas;
-        this.id = options.id ?? `__lottie${globalId++}`;
-        this.dpr = options.dpr || window.devicePixelRatio || 1;
-        this.loop = options.loop ?? false;
+        const width = options.width || canvas.width;
+        const height = options.height || canvas.height;
 
-        this.resize(canvas.width, canvas.height);
+        this.canvas = canvas;
+        this.id = options.id || `__lottie${globalId++}`;
+        this.dpr = options.dpr || window.devicePixelRatio || 1;
+        this.loop = options.loop || false;
+
+        this.resize(width, height);
 
         this.worker = addInstance(this);
         this.setupMovie(options.movie);
