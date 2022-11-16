@@ -9,6 +9,7 @@ export default {
             formats: ['es'],
             fileName: 'player'
         },
+        target: 'es2018'
     },
     worker: {
         rollupOptions: {

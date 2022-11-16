@@ -15,6 +15,36 @@ const config: Config = {
 };
 
 /**
+ * Буфферный canvas, через который будем рисовать кадры другого размера
+ */
+const bufCanvas = document.createElement('canvas');
+
+/**
+ * Флаг, указывающий, доступна ли поддержка RLottie в текущей среде
+ */
+export const isSupported = wasmIsSupported() &&
+    typeof Uint8ClampedArray !== 'undefined' &&
+    typeof Worker !== 'undefined' &&
+    typeof ImageData !== 'undefined';
+
+/**
+ * Проверка поддержки работы WASM
+ */
+function wasmIsSupported() {
+    try {
+        if (typeof WebAssembly === 'object' &&
+            typeof WebAssembly.instantiate === 'function') {
+            const module = new WebAssembly.Module(Uint8Array.of(0x0, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00));
+
+            if (module instanceof WebAssembly.Module) {
+                return new WebAssembly.Instance(module) instanceof WebAssembly.Instance;
+            }
+        }
+    } catch (e) { }
+    return false;
+}
+
+/**
  * Создаёт плеер для указанной анимации
  */
 export function createPlayer(options: PlayerOptions): Player {
@@ -75,8 +105,8 @@ export function getInternals() {
 
 export class Player {
     public readonly id: ID;
-    public canvas: HTMLCanvasElement | null = null;
-    public worker: Worker | null = null;
+    public canvas: HTMLCanvasElement | undefined;
+    public worker: Worker | undefined;
     public loop: boolean;
     public dpr: number;
     public paused = false;
@@ -126,7 +156,7 @@ export class Player {
             id: this.id,
             paused
         });
-        this.dispatch( paused ? { type: 'pause' } : { type: 'play' });
+        this.dispatch(paused ? { type: 'pause' } : { type: 'play' });
     }
 
     restart() {
@@ -187,7 +217,7 @@ export class Player {
             });
         }
 
-        this.worker = this.canvas = null;
+        this.worker = this.canvas = undefined;
         this.frame = this.totalFrames = -1;
         this.dispatch({ type: 'dispose' });
     }
@@ -222,7 +252,7 @@ export class Player {
                     id: this.id,
                     data,
                     width: this.width,
-                    height:this.height,
+                    height: this.height,
                     loop: this.loop
                 }
             });
@@ -248,7 +278,7 @@ export class Player {
 function addInstance(player: Player): Worker {
     const { id } = player;
     const items = instances.get(id);
-    let worker: Worker | null = null;
+    let worker: Worker | undefined;
     if (items?.length) {
         worker = items[0].worker;
         items.push(player);
@@ -307,17 +337,29 @@ function removeInstance(player: Player): boolean {
     return true;
 }
 
-function renderFrameForInstance(instance: Player, data: FrameData, image?: HTMLCanvasElement) {
+function renderFrameForInstance(instance: Player, data: FrameData, source?: HTMLCanvasElement) {
     const { canvas } = instance;
     if (canvas) {
         const ctx = canvas.getContext('2d')!;
-        if (image) {
-            const { width, height } = canvas;
-            ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(image, 0, 0, width, height);
-        } else {
+        const { width, height } = canvas;
+        if (data.image.width === width && data.image.height === height) {
+            // putImage — самый быстрый вариант, будем использовать его, если размер подходит
             ctx.putImageData(data.image, 0, 0);
+        } else {
+            if (!source) {
+                // Не указали отрисованный canvas, который можно отмасштабировать
+                // до нужного размера: используем буфферный
+                bufCanvas.width = data.image.width
+                bufCanvas.height = data.image.height;
+                const bufCtx = bufCanvas.getContext('2d')!;
+                bufCtx.putImageData(data.image, 0, 0);
+                source = bufCanvas;
+            }
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(source, 0, 0, width, height);
         }
+
         const isInitial = instance.frame === -1;
         instance.frame = data.frame;
         instance.totalFrames = data.totalFrames;
