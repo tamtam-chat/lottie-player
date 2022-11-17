@@ -452,3 +452,9 @@ function releaseWorker(worker: Worker) {
 function dispatchEvent(elem: Element, detail: EventPayload) {
     elem.dispatchEvent?.(new CustomEvent('lottie', { detail }));
 }
+
+
+// Сразу выделяем форкер, чтобы он успел загрузиться и проинициализироваться
+// Если будем делать это только по запросу, можем попасть в ситуацию, когда
+// воркер впервые создаются с отсутствующей сетью
+allocWorker();

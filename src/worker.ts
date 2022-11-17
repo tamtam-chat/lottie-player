@@ -63,12 +63,15 @@ class WorkerPlayerInstace {
         const { id, width, height, frame, totalFrames } = this;
         const f = this.player.render(frame, width, height);
 
-        // Из WASM кода возвращается указатель на буффер с кадром, а не сам буффер.
-        // Более того, RLottie переиспользует этот буффер для отрисовки последующих
-        // кадров, поэтому мы не можем использовать его для трансфера в основной
-        // поток (нельзя удалять из текущего). Сделаем копию буффера, чтобы
-        // передать его в основной поток
-        const buffer = copyBuffer(f);
+        // Из WASM кода возвращается указатель на буффер с кадром внутри WASM-кучи.
+        // Более того, сам буффер переиспользуется для отрисовки последующих
+        // кадров. Из-за этого мы
+        // а) не можем передать его как transferable, так как он должен остаться
+        //    внутри процесса
+        // б) просто передать как аргумент и дать браузеру его скопировать,
+        //    потому что копироваться будет вся WASM-куча
+        // Так что делаем копию буффера вручную
+        const data = copyBuffer(f)
 
         self.postMessage({
             type: 'frame',
@@ -77,8 +80,8 @@ class WorkerPlayerInstace {
             height,
             frame,
             totalFrames,
-            data: buffer
-        } as ResponseFrame);
+            data
+        } as ResponseFrame, [data] as any);
         this.frame++;
 
         return true;
@@ -100,6 +103,7 @@ class WorkerPlayerInstace {
     }
 
     dispose() {
+        // Для удаления инстанса в Emscripten
         this.player?.delete?.();
         this.player = null;
         this.disposed = true;
@@ -152,7 +156,7 @@ function create(options: WorkerPlayerOptions) {
         instances.set(instance.id, instance);
     }
 
-    if (instances.size === 1 || paused) {
+    if (instances.size === 1 && !paused) {
         play();
     }
 }
