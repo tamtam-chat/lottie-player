@@ -277,18 +277,26 @@ export class Player {
  */
 function addInstance(player: Player): Worker {
     const { id } = player;
-    const items = instances.get(id);
+    let items = instances.get(id);
     let worker: Worker | undefined;
     if (items?.length) {
         worker = items[0].worker;
-        items.push(player);
+        items.push(player)
+        // Сортируем список по размеру, от большего к меньшему.
+        // Решаем две задачи: находим мастер-плеер (под размер которого рисует RLottie)
+        // и группируем плееры по размеру. В этом случае из можно отрисовывать по
+        // очереди и отдавать предыдущий плеер как референс: тем самым мы минимизируем
+        // количество масштабирований при отрисовке плееров с разным размером
+        items.sort((a, b) => b.width - a.width);
     } else {
-        instances.set(id, [player]);
+        items = [player];
+        instances.set(id, items);
     }
 
     const frame = lastFrames.get(id);
     if (frame) {
-        renderFrameForInstance(player, frame);
+        const ix = items.indexOf(player);
+        renderFrameForInstance(player, frame, items[ix - 1]?.canvas);
     }
 
     return worker || allocWorker();
@@ -315,21 +323,12 @@ function removeInstance(player: Player): boolean {
             return true;
         }
 
-        // Обновим мастер-плеер, если надо
+        // Обновим мастер-кадр, если надо
         const lastFrame = lastFrames.get(id);
-        if (lastFrame && isMasterPlayer(player, lastFrame)) {
-            let nextMaster: Player | undefined;
-            items.forEach(p => {
-                if (!nextMaster || p.width > nextMaster.width || p.height > nextMaster.height) {
-                    nextMaster = p;
-                }
-            });
-
-            if (nextMaster && !isMasterPlayer(nextMaster, lastFrame)) {
-                nextMaster.sendSize(true);
-            }
+        const firstPlayer = items[0];
+        if (lastFrame && firstPlayer && !isSameSize(firstPlayer.canvas!, lastFrame.image)) {
+            firstPlayer.sendSize(true);
         }
-
 
         return false;
     }
@@ -341,8 +340,7 @@ function renderFrameForInstance(instance: Player, data: FrameData, source?: HTML
     const { canvas } = instance;
     if (canvas) {
         const ctx = canvas.getContext('2d')!;
-        const { width, height } = canvas;
-        if (data.image.width === width && data.image.height === height) {
+        if (isSameSize(canvas, data.image)) {
             // putImage — самый быстрый вариант, будем использовать его, если размер подходит
             ctx.putImageData(data.image, 0, 0);
         } else {
@@ -356,6 +354,7 @@ function renderFrameForInstance(instance: Player, data: FrameData, source?: HTML
                 source = bufCanvas;
             }
 
+            const { width, height } = canvas;
             ctx.clearRect(0, 0, width, height);
             ctx.drawImage(source, 0, 0, width, height);
         }
@@ -378,7 +377,6 @@ function renderFrame(payload: ResponseFrame) {
     const { id } = payload;
     const items = instances.get(id);
     if (items) {
-        let masterCanvas: HTMLCanvasElement | undefined;
         const clampedBuffer = new Uint8ClampedArray(payload.data);
         const frameData: FrameData = {
             frame: payload.frame,
@@ -386,22 +384,10 @@ function renderFrame(payload: ResponseFrame) {
             image: new ImageData(clampedBuffer, payload.width, payload.height)
         }
         lastFrames.set(id, frameData);
-        const master = items.find(p => isMasterPlayer(p, frameData));
-        if (master?.canvas) {
-            renderFrameForInstance(master, frameData);
-            masterCanvas = master.canvas;
-        }
-
-        items.forEach(p => {
-            if (p !== master) {
-                renderFrameForInstance(p, frameData, masterCanvas);
-            }
+        items.forEach((player, i) => {
+            renderFrameForInstance(player, frameData, items[i - 1]?.canvas);
         });
     }
-}
-
-function isMasterPlayer(player: Player, frameData: FrameData): boolean {
-    return player.width === frameData.image.width && player.height === frameData.image.height
 }
 
 function handleMessage(evt: MessageEvent<Response>) {
@@ -409,6 +395,10 @@ function handleMessage(evt: MessageEvent<Response>) {
     if (payload.type === 'frame') {
         renderFrame(payload);
     }
+}
+
+function isSameSize(canvas: HTMLCanvasElement, frame: ImageData): boolean {
+    return frame.width === canvas.width && frame.height === canvas.height;
 }
 
 /**
