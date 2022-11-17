@@ -106,6 +106,7 @@ export function getInternals() {
 export class Player {
     public readonly id: ID;
     public canvas: HTMLCanvasElement | undefined;
+    public ctx: CanvasRenderingContext2D | undefined;
     public worker: Worker | undefined;
     public loop: boolean;
     public dpr: number;
@@ -119,6 +120,7 @@ export class Player {
         const height = options.height || canvas.height;
 
         this.canvas = canvas;
+        this.ctx = canvas.getContext('2d')!;
         this.id = options.id || `__lottie${globalId++}`;
         this.dpr = options.dpr || window.devicePixelRatio || 1;
         this.loop = options.loop || false;
@@ -189,7 +191,7 @@ export class Player {
 
     /**
      * @private
-     * Посылает в воркер уведомление, что изменился размер анимаци
+     * Посылает в воркер уведомление, что изменился размер анимации
      * @param master Делает плеер мастером: его размер будет использоваться для
      * отрисовки, а все остальные плееры с таким же ID будут брать изображение
      * мастер-плеера
@@ -217,7 +219,7 @@ export class Player {
             });
         }
 
-        this.worker = this.canvas = undefined;
+        this.worker = this.canvas = this.ctx = undefined;
         this.frame = this.totalFrames = -1;
         this.dispatch({ type: 'dispose' });
     }
@@ -337,9 +339,8 @@ function removeInstance(player: Player): boolean {
 }
 
 function renderFrameForInstance(instance: Player, data: FrameData, source?: HTMLCanvasElement) {
-    const { canvas } = instance;
-    if (canvas) {
-        const ctx = canvas.getContext('2d')!;
+    const { canvas, ctx } = instance;
+    if (canvas && ctx) {
         if (isSameSize(canvas, data.image)) {
             // putImage — самый быстрый вариант, будем использовать его, если размер подходит
             ctx.putImageData(data.image, 0, 0);
