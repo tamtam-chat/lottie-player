@@ -405,7 +405,7 @@ function isSameSize(canvas: HTMLCanvasElement, frame: ImageData): boolean {
 /**
  * Выделяет воркер для RLottie: либо создаёт новый, либо переиспользует существующий
  */
-function allocWorker(): Worker {
+export function allocWorker(): Worker {
     let minPlayersWorker: WorkerInfo | undefined;
     for (let i = 0; i < workerPool.length; i++) {
         const info = workerPool[i];
@@ -436,7 +436,7 @@ function allocWorker(): Worker {
 /**
  * Освобождает указанный инстанс воркера
  */
-function releaseWorker(worker: Worker) {
+export function releaseWorker(worker: Worker) {
     const itemIx = workerPool.findIndex(item => item.worker === worker);
     if (itemIx !== -1) {
         const item = workerPool[itemIx]!;
@@ -453,8 +453,3 @@ function dispatchEvent(elem: Element, detail: EventPayload) {
     elem.dispatchEvent?.(new CustomEvent('lottie', { detail }));
 }
 
-
-// Сразу выделяем форкер, чтобы он успел загрузиться и проинициализироваться
-// Если будем делать это только по запросу, можем попасть в ситуацию, когда
-// воркер впервые создаются с отсутствующей сетью
-allocWorker();
