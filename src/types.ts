@@ -7,19 +7,19 @@ export interface Config {
     /** Оптимальное количество плееров в воркере */
     playersPerWorker: number;
 
-    /** Путь к воркеру */
-    workerUrl: string;
+    /** Путь к воркеру или промис, который вернёт путь к воркеру */
+    workerUrl: string | Promise<string>;
 }
 
-export interface WorkerInfo<T> {
-    worker: Worker;
+export interface WorkerInfo<T = unknown> {
+    worker?: Worker;
     players: number;
     loaded: boolean;
-    queue: QueueItem<T>[]
+    queue: WorkerQueueItem<T>[];
 }
 
-export interface QueueItem<T> {
-    player: T;
+export interface WorkerQueueItem<T = unknown> {
+    key: T;
     message: Request;
 }
 

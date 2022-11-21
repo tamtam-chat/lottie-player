@@ -2,10 +2,11 @@ import type { FrameData, ID, PlayerOptions, Request, Response, ResponseFrame, Wo
 import RLottieWorker from './worker?worker&url';
 
 export type { PlayerOptions, Config, ID, EventPayload };
+type WorkerInstance = WorkerInfo<Player>;
 
 let globalId = 0;
 
-const workerPool: WorkerInfo<Player>[] = [];
+const workerPool: WorkerInstance[] = [];
 const instances = new Map<ID, Player[]>();
 const lastFrames = new Map<ID, FrameData>();
 const config: Config = {
@@ -13,6 +14,8 @@ const config: Config = {
     playersPerWorker: 5,
     workerUrl: RLottieWorker
 };
+
+let workerUrlLoader: Promise<string> | undefined;
 
 /**
  * Буфферный canvas, через который будем рисовать кадры другого размера
@@ -85,14 +88,14 @@ export function updateConfig(data: Partial<Config>): void {
  * Запуск воспроизведения всех зарегистрированных плееров
  */
 export function play() {
-    workerPool.forEach(({ worker }) => worker.postMessage({ type: 'global-playback', paused: false }));
+    workerPool.forEach(({ worker }) => worker?.postMessage({ type: 'global-playback', paused: false }));
 }
 
 /**
  * Остановка воспроизведения всех зарегистрированных плееров
  */
 export function pause() {
-    workerPool.forEach(({ worker }) => worker.postMessage({ type: 'global-playback', paused: true }));
+    workerPool.forEach(({ worker }) => worker?.postMessage({ type: 'global-playback', paused: true }));
 }
 
 /**
@@ -107,7 +110,7 @@ export class Player {
     public readonly id: ID;
     public canvas: HTMLCanvasElement | undefined;
     public ctx: CanvasRenderingContext2D | undefined;
-    public worker: Worker | undefined;
+    public worker: WorkerInstance | undefined;
     public loop: boolean;
     public dpr: number;
     public paused = false;
@@ -227,7 +230,7 @@ export class Player {
     private send(message: Request) {
         const { worker } = this;
         if (worker) {
-            sendMessage(this, worker, message);
+            sendMessage(worker, this, message);
         }
     }
 
@@ -280,10 +283,10 @@ export class Player {
  * Добавляет указанный экземпляр в общую таблицу плееров
  * @returns Вернёт воркер, через который надо общаться с бэком
  */
-function addInstance(player: Player): Worker {
+function addInstance(player: Player): WorkerInstance {
     const { id } = player;
     let items = instances.get(id);
-    let worker: Worker | undefined;
+    let worker: WorkerInstance | undefined;
     if (items?.length) {
         worker = items[0].worker;
         items.push(player)
@@ -342,7 +345,7 @@ function removeInstance(player: Player): boolean {
     // Если удаляем инстанс, для которого ещё не загрузился воркер,
     // удаляем все его сообщения из очереди
     workerPool.forEach(item => {
-        item.queue = item.queue.filter(q => q.player !== player)
+        item.queue = item.queue.filter(q => q.key !== player)
     });
 
     return true;
@@ -417,13 +420,13 @@ function isSameSize(canvas: HTMLCanvasElement, frame: ImageData): boolean {
 /**
  * Выделяет воркер для RLottie: либо создаёт новый, либо переиспользует существующий
  */
-export function allocWorker(): Worker {
-    let minPlayersWorker: WorkerInfo<Player> | undefined;
+export function allocWorker(): WorkerInstance {
+    let minPlayersWorker: WorkerInstance | undefined;
     for (let i = 0; i < workerPool.length; i++) {
         const info = workerPool[i];
         if (info.players < config.playersPerWorker) {
             info.players++;
-            return info.worker;
+            return info;
         }
 
         if (!minPlayersWorker || minPlayersWorker.players > info.players) {
@@ -435,32 +438,33 @@ export function allocWorker(): Worker {
     // либо будем превышать лимиты на существующих
     if (workerPool.length >= config.maxWorkers && minPlayersWorker) {
         minPlayersWorker.players++;
-        return minPlayersWorker.worker;
+        return minPlayersWorker;
     }
-    const worker = new Worker(config.workerUrl, {
-        type: 'module'
-    });
-    worker.addEventListener('message', handleMessage);
-    workerPool.push({
-        worker,
+
+    const w: WorkerInstance = {
         players: 1,
         loaded: false,
         queue: []
-    });
-    return worker;
+    };
+    workerPool.push(w);
+    attachWorker(w);
+    return w;
 }
 
 /**
  * Освобождает указанный инстанс воркера
  */
-export function releaseWorker(worker: Worker) {
-    const itemIx = workerPool.findIndex(item => item.worker === worker);
-    if (itemIx !== -1) {
-        const item = workerPool[itemIx]!;
-        item.players--;
-        if (item.players <= 0) {
+export function releaseWorker(info: WorkerInstance) {
+    info.players--;
+    if (info.players <= 0) {
+        const { worker } = info;
+        if (worker) {
+            info.worker = undefined;
             worker.removeEventListener('message', handleMessage);
             worker.terminate();
+        }
+        const itemIx = workerPool.indexOf(info);
+        if (itemIx !== -1) {
             workerPool.splice(itemIx, 1);
         }
     }
@@ -470,27 +474,55 @@ function dispatchEvent(elem: Element, detail: EventPayload) {
     elem.dispatchEvent?.(new CustomEvent('lottie', { detail }));
 }
 
+/**
+ * Отправляет сообщение в воркер. Если он ещё не был загружен, добавляет сообщения
+ * в очередь на отправку
+ */
+function sendMessage(info: WorkerInstance, key: Player, message: Request) {
+    if (info.loaded && info.worker) {
+        info.worker.postMessage(message);
+    } else {
+        info.queue.push({ key, message });
+    }
+}
+
+/**
+ * Возвращает промис со ссылкой на воркер
+ */
+function getWorkerUrl(): Promise<string> {
+    if (!workerUrlLoader) {
+        const { workerUrl } = config;
+        if (typeof workerUrl === 'string') {
+            workerUrlLoader = Promise.resolve(workerUrl);
+        } else {
+            workerUrlLoader = workerUrl;
+        }
+    }
+
+    return workerUrlLoader;
+}
+
+/**
+ * Добавляет воркер к указанному инстансу
+ */
+function attachWorker(info: WorkerInstance) {
+    getWorkerUrl().then(url => {
+        if (workerPool.includes(info)) {
+            info.worker = new Worker(url, { type: 'module' });
+            info.worker.addEventListener('message', handleMessage);
+        }
+    });
+}
+
+/**
+ * Инициализация созданного воркера: помечает инстанс, что воркер готов к работе
+ */
 function initWorker(worker: Worker) {
     const item = workerPool.find(item => item.worker === worker);
     if (item) {
         item.loaded = true;
         const queue = [...item.queue];
         item.queue.length = 0;
-        queue.forEach(({ player, message }) => sendMessage(player, worker, message));
-    }
-}
-
-/**
- * Отправляет сообщение в воркер. Если он ещё не был загружен, добавляет сообщения
- * в очередь на отправку
- */
-function sendMessage(player: Player, worker: Worker, message: Request) {
-    const item = workerPool.find(item => item.worker === worker);
-    if (item) {
-        if (item.loaded) {
-            item.worker.postMessage(message);
-        } else {
-            item.queue.push({ player, message });
-        }
+        queue.forEach(({ key, message}) => sendMessage(item, key, message));
     }
 }
