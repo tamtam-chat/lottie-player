@@ -11,9 +11,16 @@ export interface Config {
     workerUrl: string;
 }
 
-export interface WorkerInfo {
+export interface WorkerInfo<T> {
     worker: Worker;
     players: number;
+    loaded: boolean;
+    queue: QueueItem<T>[]
+}
+
+export interface QueueItem<T> {
+    player: T;
+    message: Request;
 }
 
 export interface FrameData {
@@ -81,7 +88,7 @@ export interface WorkerPlayerOptions extends AdjustablePlayerOptions {
     autoplay?: boolean;
 }
 
-export type Response = ResponseFrame;
+export type Response = ResponseFrame | ResponseInit;
 
 /**
  * Данные об отрисованном кадре анимации
@@ -94,6 +101,13 @@ export interface ResponseFrame {
     frame: number;
     totalFrames: number;
     data: ArrayBuffer;
+}
+
+/**
+ * Сообщение, что воркер загрузился и проинициализировался
+ */
+export interface ResponseInit {
+    type: 'init';
 }
 
 export type Request = RequestCreate | RequestDispose | RequestTogglePlayback

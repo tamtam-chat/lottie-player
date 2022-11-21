@@ -214,3 +214,8 @@ function copyBuffer(src: Uint8Array): ArrayBuffer {
     new Uint8Array(dst).set(src);
     return dst;
 }
+
+// Сообщаем, что загрузились
+self.postMessage({
+    type: 'init'
+});

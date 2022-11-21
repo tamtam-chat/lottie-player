@@ -1,7 +1,7 @@
 import { createPlayer, updateConfig, getInternals } from './player';
 import acrobatics from './assets/acrobatics.json?inline';
 import emojiWink from './assets/emoji_wink.json?inline';
-import heart from './assets/heart.json?inline';
+import heart from './assets/heart.json?url';
 import loader from './assets/gradient_sleepy_loader.json?inline';
 
 const app = document.getElementById('app')!
@@ -75,7 +75,7 @@ function createControls() {
     // });
 
     createButton('Emoji wink', createMovieHandler(emojiWink));
-    createButton('Heart', createMovieHandler(heart));
+    createButton('Heart', createMovieHandler(new URL(heart, location.href).href));
     createButton('Loader', createMovieHandler(loader, 'gradient'));
 
     createButton('Log internals', () => console.log(getInternals()));

@@ -5,7 +5,7 @@ export type { PlayerOptions, Config, ID, EventPayload };
 
 let globalId = 0;
 
-const workerPool: WorkerInfo[] = [];
+const workerPool: WorkerInfo<Player>[] = [];
 const instances = new Map<ID, Player[]>();
 const lastFrames = new Map<ID, FrameData>();
 const config: Config = {
@@ -225,7 +225,10 @@ export class Player {
     }
 
     private send(message: Request) {
-        this.worker?.postMessage(message);
+        const { worker } = this;
+        if (worker) {
+            sendMessage(this, worker, message);
+        }
     }
 
     private setupMovie(movie: PlayerOptions['movie']) {
@@ -335,6 +338,12 @@ function removeInstance(player: Player): boolean {
         return false;
     }
 
+    // Если удаляем инстанс, для которого ещё не загрузился воркер,
+    // удаляем все его сообщения из очереди
+    workerPool.forEach(item => {
+        item.queue = item.queue.filter(q => q.player !== player)
+    });
+
     return true;
 }
 
@@ -395,6 +404,8 @@ function handleMessage(evt: MessageEvent<Response>) {
     const payload = evt.data;
     if (payload.type === 'frame') {
         renderFrame(payload);
+    } else if (payload.type === 'init') {
+        initWorker(evt.target as Worker);
     }
 }
 
@@ -406,7 +417,7 @@ function isSameSize(canvas: HTMLCanvasElement, frame: ImageData): boolean {
  * Выделяет воркер для RLottie: либо создаёт новый, либо переиспользует существующий
  */
 export function allocWorker(): Worker {
-    let minPlayersWorker: WorkerInfo | undefined;
+    let minPlayersWorker: WorkerInfo<Player> | undefined;
     for (let i = 0; i < workerPool.length; i++) {
         const info = workerPool[i];
         if (info.players < config.playersPerWorker) {
@@ -429,7 +440,12 @@ export function allocWorker(): Worker {
         type: 'module'
     });
     worker.addEventListener('message', handleMessage);
-    workerPool.push({ worker, players: 1 });
+    workerPool.push({
+        worker,
+        players: 1,
+        loaded: false,
+        queue: []
+    });
     return worker;
 }
 
@@ -453,3 +469,27 @@ function dispatchEvent(elem: Element, detail: EventPayload) {
     elem.dispatchEvent?.(new CustomEvent('lottie', { detail }));
 }
 
+function initWorker(worker: Worker) {
+    const item = workerPool.find(item => item.worker === worker);
+    if (item) {
+        item.loaded = true;
+        const queue = [...item.queue];
+        item.queue.length = 0;
+        queue.forEach(({ player, message }) => sendMessage(player, worker, message));
+    }
+}
+
+/**
+ * Отправляет сообщение в воркер. Если он ещё не был загружен, добавляет сообщения
+ * в очередь на отправку
+ */
+function sendMessage(player: Player, worker: Worker, message: Request) {
+    const item = workerPool.find(item => item.worker === worker);
+    if (item) {
+        if (item.loaded) {
+            item.worker.postMessage(message);
+        } else {
+            item.queue.push({ player, message });
+        }
+    }
+}
