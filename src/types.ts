@@ -7,8 +7,8 @@ export interface Config {
     /** Оптимальное количество плееров в воркере */
     playersPerWorker: number;
 
-    /** Путь к воркеру или промис, который вернёт путь к воркеру */
-    workerUrl: string | Promise<string>;
+    /** Путь к воркеру или функция, который вернёт путь к воркеру */
+    workerUrl: string | (() => string | Promise<string>);
 }
 
 export interface WorkerInfo<T = unknown> {

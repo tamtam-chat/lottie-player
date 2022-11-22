@@ -490,7 +490,8 @@ function sendMessage(info: WorkerInstance, key: Player, message: Request) {
  */
 function getWorkerUrl(): Promise<string> {
     if (!workerUrlLoader) {
-        const { workerUrl } = config;
+        const entry = config.workerUrl;
+        let workerUrl: string | Promise<string> = typeof entry === 'function' ? entry() : entry;
         if (typeof workerUrl === 'string') {
             workerUrlLoader = Promise.resolve(workerUrl);
         } else {
