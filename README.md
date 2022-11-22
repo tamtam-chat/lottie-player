@@ -64,6 +64,23 @@ updateConfig({ workerUrl });
 const player = createPlayer({ ... });
 ```
 
+### Загрузка воркера с другого хоста
+
+По спецификации ссылка на код воркера [должна соответствовать same-origin policy](https://developer.mozilla.org/en-US/docs/Web/API/Worker/Worker) основной страницы. Если код располагается на отдельном хосте, можно обойти это ограничение, предварительно загрузив код как Blob:
+
+```js
+import { updateConfig } from '@tamtam-chat/lottie-player';
+updateConfig({
+    // В качестве workerUrl можно отдать функцию, которая вернёт URL
+    // или Promise c URL
+    workerUrl: async () => {
+        const resp = await fetch('https://static.host.com/worker.js', { mode: 'cors' });
+        const blob = await resp.blob();
+        return URL.createObjectURL(blob);
+    }
+});
+```
+
 ## API плеера
 
 У созданного плеера доступны следующие методы:
