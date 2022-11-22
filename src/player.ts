@@ -180,13 +180,17 @@ export class Player {
      * Меняет размер холста с анимацией. Так же убедится, что размер отрисовываемого
      * кадра будет не меньше
      */
-    resize(width: number, height: number) {
-        const { canvas, dpr } = this;
+    resize(width: number, height: number, dpr = this.dpr) {
+        const { canvas } = this;
         if (canvas) {
+            this.dpr = dpr;
             canvas.width = width * dpr;
             canvas.height = height * dpr;
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
+
+            orderInstances(this.id);
+            renderLastFrame(this);
         }
 
         this.sendSize();
@@ -290,23 +294,13 @@ function addInstance(player: Player): WorkerInstance {
     if (items?.length) {
         worker = items[0].worker;
         items.push(player)
-        // Сортируем список по размеру, от большего к меньшему.
-        // Решаем две задачи: находим мастер-плеер (под размер которого рисует RLottie)
-        // и группируем плееры по размеру. В этом случае из можно отрисовывать по
-        // очереди и отдавать предыдущий плеер как референс: тем самым мы минимизируем
-        // количество масштабирований при отрисовке плееров с разным размером
-        items.sort((a, b) => b.width - a.width);
+        orderInstances(id);
     } else {
         items = [player];
         instances.set(id, items);
     }
 
-    const frame = lastFrames.get(id);
-    if (frame) {
-        const ix = items.indexOf(player);
-        renderFrameForInstance(player, frame, items[ix - 1]?.canvas);
-    }
-
+    renderLastFrame(player);
     return worker || allocWorker();
 }
 
@@ -403,6 +397,19 @@ function renderFrame(payload: ResponseFrame) {
     }
 }
 
+/**
+ * Отрисовка последнего кадра для плеера, если он есть
+ */
+function renderLastFrame(player: Player) {
+    const { id } = player;
+    const items = instances.get(id);
+    const frame = lastFrames.get(id);
+    if (frame && items) {
+        const ix = items.indexOf(player);
+        renderFrameForInstance(player, frame, items[ix - 1]?.canvas);
+    }
+}
+
 function handleMessage(evt: MessageEvent<Response>) {
     const payload = evt.data;
     if (payload.type === 'frame') {
@@ -414,6 +421,20 @@ function handleMessage(evt: MessageEvent<Response>) {
 
 function isSameSize(canvas: HTMLCanvasElement, frame: ImageData): boolean {
     return frame.width === canvas.width && frame.height === canvas.height;
+}
+
+/**
+ * Сортируем список по размеру, от большего к меньшему.
+ * Решаем две задачи: находим мастер-плеер (под размер которого рисует RLottie)
+ * и группируем плееры по размеру. В этом случае из можно отрисовывать по
+ * очереди и отдавать предыдущий плеер как референс: тем самым мы минимизируем
+ * количество масштабирований при отрисовке плееров с разным размером
+ */
+function orderInstances(id: ID) {
+    const items = instances.get(id);
+    if (items && items.length > 1) {
+        items.sort((a, b) => b.width - a.width);
+    }
 }
 
 /**
