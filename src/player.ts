@@ -305,7 +305,6 @@ function addInstance(player: Player): WorkerInstance {
     if (frame) {
         const ix = items.indexOf(player);
         renderFrameForInstance(player, frame, items[ix - 1]?.canvas);
-        dispatchEvent(player.canvas!, { type: 'initial-render' });
     }
 
     return worker || allocWorker();
