@@ -42,6 +42,28 @@ class WorkerPlayerInstace {
         });
     }
 
+    /**
+     * Отрисовка указанного кадра
+     * @return Пиксельные данные о кадре или `undefined`, если отрисовать не удалось
+     * (например, плеер ещё не загружен или указали неправильный кадр)
+     */
+    renderFrame(frame: number): ArrayBuffer | void {
+        const { player, width, height, totalFrames } = this;
+        if (player && frame >= 0 && frame < totalFrames) {
+            const data = player.render(frame, width, height);
+
+            // Из WASM кода возвращается указатель на буффер с кадром внутри WASM-кучи.
+            // Более того, сам буффер переиспользуется для отрисовки последующих
+            // кадров. Из-за этого мы
+            // а) не можем передать его как transferable, так как он должен остаться
+            //    внутри процесса
+            // б) просто передать как аргумент и дать браузеру его скопировать,
+            //    потому что копироваться будет вся WASM-куча
+            // Так что делаем копию буффера вручную
+            return copyBuffer(data);
+        }
+    }
+
     render(): boolean {
         if (this.disposed || this.paused) {
             return false;
@@ -61,7 +83,6 @@ class WorkerPlayerInstace {
         }
 
         const { id, width, height, frame, totalFrames } = this;
-        const f = this.player.render(frame, width, height);
 
         // Из WASM кода возвращается указатель на буффер с кадром внутри WASM-кучи.
         // Более того, сам буффер переиспользуется для отрисовки последующих
@@ -71,7 +92,7 @@ class WorkerPlayerInstace {
         // б) просто передать как аргумент и дать браузеру его скопировать,
         //    потому что копироваться будет вся WASM-куча
         // Так что делаем копию буффера вручную
-        const data = copyBuffer(f)
+        const data = this.renderFrame(this.frame);
 
         self.postMessage({
             type: 'frame',
@@ -110,13 +131,7 @@ class WorkerPlayerInstace {
     }
 }
 
-function loop() {
-    rafId = 0;
-
-    if (paused) {
-        return;
-    }
-
+function tick(): boolean {
     let rendered = false;
 
     instances.forEach((instance, key) => {
@@ -127,7 +142,13 @@ function loop() {
         }
     });
 
-    if (rendered && instances.size) {
+    return rendered;
+}
+
+function loop() {
+    rafId = 0;
+
+    if (!paused && tick() && instances.size) {
         rafId = requestAnimationFrame(loop);
     }
 }

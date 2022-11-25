@@ -7,19 +7,28 @@ export interface Config {
     /** Оптимальное количество плееров в воркере */
     playersPerWorker: number;
 
+    /**
+     * Кэшировать отрисованные кадры. Это позволит значительно снизить нагрузку
+     * на CPU, так как каждый кадр анимации отрисуется только один раз и при
+     * циклическом воспроизведении будет брать кадр из кэша. Однако это
+     * значительно потребление памяти. Каждый кадр будет занимать
+     * `width × height × (dpr × 2) × 4` байт
+     */
+    cacheFrames: boolean;
+
     /** Путь к воркеру или функция, который вернёт путь к воркеру */
     workerUrl: string | (() => string | Promise<string>);
 }
 
-export interface WorkerInfo<T = unknown> {
+export interface WorkerInfo {
     worker?: Worker;
     players: number;
     loaded: boolean;
-    queue: WorkerQueueItem<T>[];
+    queue: WorkerQueueItem[];
 }
 
-export interface WorkerQueueItem<T = unknown> {
-    key: T;
+export interface WorkerQueueItem {
+    id: ID;
     message: Request;
 }
 
@@ -88,7 +97,28 @@ export interface WorkerPlayerOptions extends AdjustablePlayerOptions {
     autoplay?: boolean;
 }
 
-export type Response = ResponseFrame | ResponseInit;
+/**
+ * Запрос на отрисовку кадра
+ */
+export interface FrameRequest {
+    id: ID;
+    frame: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Данные об отрисованном кадре
+ */
+ export interface FrameResponse {
+    id: ID;
+    width: number;
+    height: number;
+    frame: number;
+    data: ArrayBuffer;
+}
+
+export type Response = ResponseFrame | ResponseInit | ResponseMount | ResponseRender;
 
 /**
  * Данные об отрисованном кадре анимации
@@ -104,14 +134,30 @@ export interface ResponseFrame {
 }
 
 /**
- * Сообщение, что воркер загрузился и проинициализировался
+ * Ответ на отрисовку кадров инстансов
+ */
+export interface ResponseRender {
+    type: 'render';
+    frames: FrameResponse[];
+}
+
+/**
+ * Сообщение, что код воркера загрузился и проинициализировался
  */
 export interface ResponseInit {
     type: 'init';
 }
 
-export type Request = RequestCreate | RequestDispose | RequestTogglePlayback
-    | RequestUpdate | RequestRestart | RequestGlobalTogglePlayback;
+/**
+ * Сообщение, что отрисовщик RLottie успешно создан и проинициализирован
+ */
+ export interface ResponseMount {
+    type: 'mount';
+    id: ID;
+    totalFrames: number;
+}
+
+export type Request = RequestCreate | RequestDispose | RequestRender;
 
 /**
  * Создание нового инстанса для отрисовки анимации
@@ -130,38 +176,11 @@ export interface RequestDispose {
 }
 
 /**
- * Переключение статуса воспроизведения для указанной анимации
+ * Вызов отрисовки кадров для указанных инстансов
  */
-export interface RequestTogglePlayback {
-    type: 'playback';
-    id: ID;
-    paused: boolean;
-}
-
-/**
- * Обновление данных о плеере
- */
-export interface RequestUpdate {
-    type: 'update';
-    id: ID;
-    data: AdjustablePlayerOptions;
-    ifRequired?: boolean;
-}
-
-/**
- * Перезапуск воспроизведения плеера, начинает играть с первого кадра
- */
-export interface RequestRestart {
-    type: 'restart';
-    id: ID;
-}
-
-/**
- * Глобальное переключение воспроизведения для всех плееров
- */
- export interface RequestGlobalTogglePlayback {
-    type: 'global-playback';
-    paused: boolean;
+export interface RequestRender {
+    type: 'render';
+    frames: FrameRequest[];
 }
 
 export type EventPayload = EventPayloadMount | EventPayloadDispose | EventPayloadInitialRender

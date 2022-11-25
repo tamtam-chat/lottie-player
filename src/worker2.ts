@@ -1,0 +1,130 @@
+import lottieLoader, { RlottieWasm } from './rlottie-wasm';
+import type { ID, WorkerPlayerOptions, Request, Response, FrameResponse, FrameRequest } from './types';
+
+/** Все инстансы плееров */
+const instances = new Map<ID, WorkerPlayerInstace>();
+
+class WorkerPlayerInstace {
+    public id: string | number;
+    public totalFrames = 0;
+    public disposed = false;
+
+    private player: RlottieWasm | null = null;
+
+    constructor(options: WorkerPlayerOptions) {
+        this.id = options.id;
+        lottieLoader.then(({ RlottieWasm }) => {
+            if (this.disposed) {
+                return;
+            }
+            this.player = new RlottieWasm(options.data);
+            this.totalFrames = this.player.frames();
+            send({
+                type: 'mount',
+                id: this.id,
+                totalFrames: this.totalFrames
+            });
+        }).catch((err) => {
+            console.error(err);
+            this.disposed = true;
+        });
+    }
+
+    /**
+     * Отрисовка указанного кадра
+     * @return Пиксельные данные о кадре или `undefined`, если отрисовать не удалось
+     * (например, плеер ещё не загружен или указали неправильный кадр)
+     */
+    render(frame: number, width: number, height: number): ArrayBuffer | void {
+        const { player, totalFrames } = this;
+        if (player && frame >= 0 && frame < totalFrames) {
+            const data = player.render(frame, width, height);
+
+            // Из WASM кода возвращается указатель на буффер с кадром внутри WASM-кучи.
+            // Более того, сам буффер переиспользуется для отрисовки последующих
+            // кадров. Из-за этого мы
+            // а) не можем передать его как transferable, так как он должен остаться
+            //    внутри процесса
+            // б) просто передать как аргумент и дать браузеру его скопировать,
+            //    потому что копироваться будет вся WASM-куча
+            // Так что делаем копию буффера вручную
+            return copyBuffer(data);
+        }
+    }
+
+    dispose() {
+        // Для удаления инстанса в Emscripten
+        this.player?.delete?.();
+        this.player = null;
+        this.disposed = true;
+    }
+}
+
+function create(options: WorkerPlayerOptions) {
+    const { id } = options;
+    if (!instances.has(id)) {
+        instances.set(id, new WorkerPlayerInstace(options));
+    }
+}
+
+function dispose(id: ID) {
+    const instance = instances.get(id);
+    if (instance) {
+        instances.delete(id);
+        instance.dispose();
+    }
+}
+
+/**
+ * Отрисовка кадров для указанных анимаций
+ */
+function render(payload: FrameRequest[]) {
+    const frames: FrameResponse[] = [];
+    payload.forEach(req => {
+        try {
+            const instance = instances.get(req.id);
+            const data = instance?.render(req.frame, req.width, req.height)
+            if (data) {
+                frames.push({ ...req, data });
+            }
+        } catch {}
+    });
+
+    send({ type: 'render', frames });
+}
+
+
+self.addEventListener('message', (evt: MessageEvent<Request>) => {
+    const payload = evt.data;
+
+    switch (payload.type) {
+        case 'create':
+            create(payload.data);
+            break;
+        case 'dispose':
+            dispose(payload.id);
+            break;
+        case 'render':
+            render(payload.frames);
+            break;
+    }
+});
+
+/**
+ * Быстрое копирование буффера
+ */
+function copyBuffer(src: Uint8Array): ArrayBuffer {
+    const dst = new ArrayBuffer(src.byteLength);
+    new Uint8Array(dst).set(src);
+    return dst;
+}
+
+/**
+ * Отправка сообщения в основной поток
+ */
+function send(payload: Response) {
+    self.postMessage(payload);
+}
+
+// Сообщаем, что загрузились
+send({ type: 'init' });
