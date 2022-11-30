@@ -20,33 +20,9 @@ export interface Config {
     workerUrl: string | (() => string | Promise<string>);
 }
 
-export interface WorkerInfo {
-    worker?: Worker;
-    players: number;
-    loaded: boolean;
-    queue: WorkerQueueItem[];
-}
-
-export interface WorkerQueueItem {
-    id: ID;
-    message: Request;
-}
-
 export interface FrameData {
     frame: number;
-    totalFrames: number;
     image: ImageData;
-}
-
-export interface AdjustablePlayerOptions {
-    /** Ширина кадра для отрисовки */
-    width?: number;
-
-    /** Высота кадра для отрисовки */
-    height?: number;
-
-    /** Воспроизводить в цикле */
-    loop?: boolean;
 }
 
 export interface PlayerOptions {
@@ -83,7 +59,7 @@ export interface PlayerOptions {
     id?: ID;
 }
 
-export interface WorkerPlayerOptions extends AdjustablePlayerOptions {
+export interface WorkerPlayerOptions {
     /**
      * Уникальный идентификатор плеера. Используется для того, чтобы не создавать
      * отдельные инстансы для одной и той же анимации
@@ -92,9 +68,6 @@ export interface WorkerPlayerOptions extends AdjustablePlayerOptions {
 
     /** Данные с анимацией (JSON) */
     data: string;
-
-    /** Сразу воспроизводить анимацию. По умолчанию `true` */
-    autoplay?: boolean;
 }
 
 /**
@@ -118,95 +91,55 @@ export interface FrameRequest {
     data: ArrayBuffer;
 }
 
-export type Response = ResponseFrame | ResponseInit | ResponseMount | ResponseRender;
-
-/**
- * Данные об отрисованном кадре анимации
- */
-export interface ResponseFrame {
-    type: 'frame';
+export interface CreateRequest {
+    /**
+     * Уникальный идентификатор плеера. Используется для того, чтобы не создавать
+     * отдельные инстансы для одной и той же анимации
+     */
     id: ID;
-    width: number;
-    height: number;
-    frame: number;
-    totalFrames: number;
-    data: ArrayBuffer;
+
+    /** Данные с анимацией (JSON) */
+    data: string;
 }
 
-/**
- * Ответ на отрисовку кадров инстансов
- */
-export interface ResponseRender {
-    type: 'render';
+export interface CreateResponse {
+    totalFrames: number;
+}
+
+export interface CreateResponse {
+    totalFrames: number;
+}
+
+export interface RenderRequest {
+    frames: FrameRequest[]
+}
+
+export interface RenderResponse {
     frames: FrameResponse[];
 }
 
-/**
- * Сообщение, что код воркера загрузился и проинициализировался
- */
-export interface ResponseInit {
-    type: 'init';
-}
-
-/**
- * Сообщение, что отрисовщик RLottie успешно создан и проинициализирован
- */
- export interface ResponseMount {
-    type: 'mount';
-    id: ID;
-    totalFrames: number;
-}
-
-export type Request = RequestCreate | RequestDispose | RequestRender;
-
-/**
- * Создание нового инстанса для отрисовки анимации
- */
-export interface RequestCreate {
-    type: 'create';
-    data: WorkerPlayerOptions;
-}
-
-/**
- * Удаление инстанса плеера с указанным ID
- */
-export interface RequestDispose {
-    type: 'dispose';
+export interface DisposeRequest {
     id: ID;
 }
 
-/**
- * Вызов отрисовки кадров для указанных инстансов
- */
-export interface RequestRender {
-    type: 'render';
-    frames: FrameRequest[];
+export interface DisposeResponse {
+    ok: boolean;
 }
 
-export type EventPayload = EventPayloadMount | EventPayloadDispose | EventPayloadInitialRender
-    | EventPayloadPlay | EventPayloadPause | EventPayloadError;
-
-export interface EventPayloadMount {
-    type: 'mount';
+export type RequestMap = {
+    create: [CreateRequest, CreateResponse];
+    render: [RenderRequest, RenderResponse];
+    dispose: [DisposeRequest, DisposeResponse];
 }
 
-export interface EventPayloadDispose {
-    type: 'dispose';
+export interface WorkerRequest<K extends keyof RequestMap> {
+    seq: number;
+    name: K;
+    payload: RequestMap[K][0];
 }
 
-export interface EventPayloadInitialRender {
-    type: 'initial-render';
-}
-
-export interface EventPayloadPlay {
-    type: 'play';
-}
-
-export interface EventPayloadPause {
-    type: 'pause';
-}
-
-export interface EventPayloadError {
-    type: 'error';
-    error: Error;
+export interface WorkerMessage {
+    seq: number;
+    name: keyof RequestMap;
+    payload: any;
 }

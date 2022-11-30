@@ -1,32 +1,33 @@
-import { EventPayload, ID, PlayerOptions, Request, WorkerInfo } from '../types';
+import type { ID, PlayerOptions } from '../types';
 
 let globalId = 0;
-const instances = new Map<ID, Player[]>();
 
 export interface PlayerEventMap {
-    mount: [];
+    mount: [totalFrames: number];
     play: [];
     pause: [];
+    ended: [];
+    rendered: [];
     resize: [width: number, height: number, dpr: number];
+    dispose: [];
 }
 
 type PlayerEventNames = keyof PlayerEventMap;
+type Listener = (...args: any[]) => void;
 
-export class Player {
+export default class Player {
     public readonly id: ID;
     public canvas: HTMLCanvasElement;
     public ctx: CanvasRenderingContext2D;
-    public worker: WorkerInfo;
     public loop: boolean;
     public dpr: number;
     public paused = false;
     public frame = -1;
     public totalFrames = -1;
 
-    private listeners: { [K in PlayerEventNames]?: ((...args: any[]) => void)[] };
+    private listeners: { [K in PlayerEventNames]?: Listener[] } = {};
 
     constructor(options: PlayerOptions) {
-        this.listeners = {};
         const { canvas } = options;
         const width = options.width || canvas.width;
         const height = options.height || canvas.height;
@@ -52,29 +53,34 @@ export class Player {
         return this.totalFrames !== -1;
     }
 
+    /**
+     * Запускает воспроизведение анимации
+     */
     play() {
-        this.toggle(false);
-    }
-
-    pause() {
-        this.toggle(true);
-    }
-
-    toggle(paused = !this.paused) {
-        const items = instances.get(this.id);
-        if (items) {
-            items.forEach(item => item.paused = paused);
+        if (this.paused) {
+            this.paused = false;
+            this.emit('play');
         }
-        this.dispatch(paused ? { type: 'pause' } : { type: 'play' });
     }
 
-    restart() {
-        const items = instances.get(this.id);
-        if (items) {
-            items.forEach(item => {
-                item.paused = false,
-                item.frame = 0;
-            });
+    /**
+     * Останавливает воспроизведение анимации
+     */
+    pause() {
+        if (!this.paused) {
+            this.paused = true;
+            this.emit('pause');
+        }
+    }
+
+    /**
+     * Переключает воспроизведение анимации
+     */
+    toggle() {
+        if (this.paused) {
+            this.play();
+        } else {
+            this.pause()
         }
     }
 
@@ -91,8 +97,19 @@ export class Player {
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
 
-            orderInstances(this.id);
-            // renderLastFrame(this);
+            if (this.mounted) {
+                this.emit('resize', width, height, dpr);
+            }
+        }
+    }
+
+    /**
+     * Вызывается в момент, когда для указанного плеера смонтировался воркер.
+     */
+    mount(totalFrames: number) {
+        if (!this.mounted) {
+            this.totalFrames = totalFrames;
+            this.emit('mount', totalFrames);
         }
     }
 
@@ -101,51 +118,50 @@ export class Player {
      */
     dispose() {
         this.frame = this.totalFrames = -1;
-        this.dispatch({ type: 'dispose' });
-    }
-
-    /**
-     * Вызывается после того, как воркер-плеер проинициализировался и готов
-     * к отрисовке анимации
-     * @private
-     */
-    onMount(totalFrames: number) {
-        if (this.totalFrames === -1) {
-            this.totalFrames = totalFrames;
-            dispatchEvent(this.canvas!, { type: 'mount' });
-        }
+        this.emit('dispose');
+        this.listeners = {};
     }
 
     /**
      * Подписка на событие
      */
-    on<E extends PlayerEventNames>(...args: PlayerEventMap[E]): this {
+    on<E extends PlayerEventNames>(event: E, callback: (...args: PlayerEventMap[E]) => void): this {
+        const listeners = this.listeners[event];
+        if (listeners) {
+            listeners.push(callback as Listener)
+        } else {
+            this.listeners[event] = [callback as Listener];
+        }
+        return this;
+    }
+
+    /**
+     * Отписка от события
+     */
+    off<E extends PlayerEventNames>(event: E, callback: (...args: PlayerEventMap[E]) => void): this {
+        const listeners = this.listeners[event];
+        if (listeners) {
+            // NB: используем новый массив, так как отписка от событий во время
+            // выброса события приведет к потере вызова коллбэков
+            const nextListeners: Listener[] = [];
+            for (let i = 0; i < listeners.length; i++) {
+                if (listeners[i] !== callback) {
+                    nextListeners.push(listeners[i]);
+                }
+            }
+            this.listeners[event] = nextListeners;
+        }
 
         return this;
     }
 
-    private dispatch(detail: EventPayload) {
-        if (this.canvas) {
-            dispatchEvent(this.canvas, detail);
+    emit<E extends PlayerEventNames>(event: E, ...args: PlayerEventMap[E]): this {
+        const listeners = this.listeners[event];
+        if (listeners) {
+            for (let i = 0; i < listeners.length; i++) {
+                listeners[i].apply(null, args);
+            }
         }
+        return this;
     }
-}
-
-
-/**
- * Сортируем список по размеру, от большего к меньшему.
- * Решаем две задачи: находим мастер-плеер (под размер которого рисует RLottie)
- * и группируем плееры по размеру. В этом случае из можно отрисовывать по
- * очереди и отдавать предыдущий плеер как референс: тем самым мы минимизируем
- * количество масштабирований при отрисовке плееров с разным размером
- */
-function orderInstances(id: ID) {
-    const items = instances.get(id);
-    if (items && items.length > 1) {
-        items.sort((a, b) => b.width - a.width);
-    }
-}
-
-function dispatchEvent(elem: Element, detail: EventPayload) {
-    elem.dispatchEvent?.(new CustomEvent('lottie', { detail }));
 }
