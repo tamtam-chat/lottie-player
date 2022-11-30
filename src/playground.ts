@@ -99,7 +99,8 @@ function createMovieHandler(movie: string | object, id?: string) {
 // Для отладки сокращаем лимиты
 updateConfig({
     maxWorkers: 3,
-    playersPerWorker: 2
+    playersPerWorker: 2,
+    cacheFrames: true
 });
 
 createControls();

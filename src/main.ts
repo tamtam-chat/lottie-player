@@ -1,7 +1,8 @@
 import Player from './lib/Player';
 import { getMovie, isSameSize } from './lib/utils';
 import { allocWorker, releaseWorker, workerPool, type WorkerInstance } from './lib/worker-pool';
-import { FrameData, FrameRequest, FrameResponse, ID, PlayerOptions, RenderResponse } from './types';
+import { FrameRequest, FrameResponse, ID, PlayerOptions, RenderResponse } from './types';
+import { getConfig } from './lib/config';
 
 export { updateConfig, getConfig } from './lib/config';
 
@@ -9,6 +10,7 @@ interface PlayerRegistryItem {
     id: ID;
     players: Player[];
     totalFrames: number;
+    frameCache?: ImageData[];
     worker?: WorkerInstance;
 }
 
@@ -194,12 +196,16 @@ function render() {
             // Есть плееры, где надо отрисовать кадры
             rendered = true;
             const req = toFrameRequest(firstPlaying);
-            // TODO кэширование кадров
-            const queue = workerPayload.get(worker);
-            if (queue) {
-                queue.push(req);
+            const cachedFrame = getCachedFrame(req);
+            if (cachedFrame) {
+                renderGroup(req.id, req.frame, cachedFrame);
             } else {
-                workerPayload.set(worker, [req]);
+                const queue = workerPayload.get(worker);
+                if (queue) {
+                    queue.push(req);
+                } else {
+                    workerPayload.set(worker, [req]);
+                }
             }
         }
     });
@@ -224,6 +230,33 @@ function render() {
     }
 }
 
+/**
+ * Вернёт закэшированный кадр, если его можно отрисовать для указанного запроса
+ */
+function getCachedFrame(req: FrameRequest): ImageData | void {
+    const item = registry.get(req.id);
+    if (item?.frameCache) {
+        const frame = item.frameCache[req.frame];
+        if (frame && frame.width >= req.width && frame.height >= req.height) {
+            return frame;
+        }
+    }
+}
+
+/**
+ * Записывает отрисованный кадр в кэш
+ */
+function setCachedFrame(id: ID, frame: number, image: ImageData) {
+    const item = registry.get(id);
+    if (item && item.totalFrames !== -1) {
+        if (!item.frameCache) {
+            item.frameCache = new Array(item.totalFrames);
+        }
+
+        item.frameCache[frame] = image;
+    }
+}
+
 function toFrameRequest(player: Player, forSize: Player = player): FrameRequest {
     return {
         id: player.id,
@@ -245,44 +278,46 @@ function restartLoop(rendered?: boolean) {
  */
 function renderFrameResponse(payload: FrameResponse) {
     const { id } = payload;
-    const items = registry.get(id);
-    if (items) {
-        let prevRendered: HTMLCanvasElement | undefined;
+    if (registry.has(id)) {
         const clampedBuffer = new Uint8ClampedArray(payload.data);
-        const frameData: FrameData = {
-            frame: payload.frame,
-            image: new ImageData(clampedBuffer, payload.width, payload.height)
-        };
+        const image = new ImageData(clampedBuffer, payload.width, payload.height);
 
-        // TODO сохранить последний кадр
+        if (getConfig().cacheFrames) {
+            setCachedFrame(id, payload.frame, image);
+        }
 
-        items.players.forEach(player => {
-            if (isPlaying(player)) {
-                renderFrame(player, frameData, prevRendered);
-                prevRendered = player.canvas;
-            }
-        });
+        renderGroup(id, payload.frame, image);
     }
+}
+
+function renderGroup(id: ID, frame: number, image: ImageData) {
+    let prevRendered: HTMLCanvasElement | undefined;
+    registry.get(id)?.players.forEach(player => {
+        if (isPlaying(player)) {
+            renderFrame(player, frame, image, prevRendered);
+            prevRendered = player.canvas;
+        }
+    });
 }
 
 /**
  * Отрисовка кадра в указанном плеере
  */
-function renderFrame(player: Player, frameData: FrameData, prev?: HTMLCanvasElement) {
+function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTMLCanvasElement) {
     const isInitial = player.frame === -1;
     const { ctx, canvas } = player;
 
-    if (isSameSize(canvas, frameData.image)) {
+    if (isSameSize(canvas, image)) {
         // putImage — самый быстрый вариант, будем использовать его, если размер подходит
-        ctx.putImageData(frameData.image, 0, 0);
+        ctx.putImageData(image, 0, 0);
     } else {
         if (!prev) {
             // Нет предыдущего отрисованный canvas, который можно отмасштабировать
             // до нужного размера: используем буфферный
-            bufCanvas.width = frameData.image.width
-            bufCanvas.height = frameData.image.height;
+            bufCanvas.width = image.width
+            bufCanvas.height = image.height;
             const bufCtx = bufCanvas.getContext('2d')!;
-            bufCtx.putImageData(frameData.image, 0, 0);
+            bufCtx.putImageData(image, 0, 0);
             prev = bufCanvas;
         }
 
@@ -291,7 +326,7 @@ function renderFrame(player: Player, frameData: FrameData, prev?: HTMLCanvasElem
         ctx.drawImage(prev, 0, 0, width, height);
     }
 
-    player.frame = frameData.frame;
+    player.frame = frame;
     if (isInitial) {
         player.emit('rendered');
     }

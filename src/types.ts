@@ -16,13 +16,8 @@ export interface Config {
      */
     cacheFrames: boolean;
 
-    /** Путь к воркеру или функция, который вернёт путь к воркеру */
+    /** Путь к воркеру или функция, которая вернёт путь к воркеру */
     workerUrl: string | (() => string | Promise<string>);
-}
-
-export interface FrameData {
-    frame: number;
-    image: ImageData;
 }
 
 export interface PlayerOptions {
