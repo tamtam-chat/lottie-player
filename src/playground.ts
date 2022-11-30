@@ -1,4 +1,4 @@
-import { createPlayer, updateConfig, getInternals } from './player';
+import { createPlayer, updateConfig, getInternals } from './main';
 import acrobatics from './assets/acrobatics.json?inline';
 import emojiWink from './assets/emoji_wink.json?inline';
 import heart from './assets/heart.json?url';
@@ -32,10 +32,15 @@ function createMovie(opt: MovieOptions) {
             ? opt.movie : JSON.stringify(opt.movie),
     });
 
-    canvas.addEventListener('click', () => {
-        canvas.remove();
-        player.dispose();
-        console.log('disposed player');
+    canvas.addEventListener('click', evt => {
+        if (evt.altKey) {
+            player.toggle();
+            console.log('toggle playback');
+        } else {
+            canvas.remove();
+            player.dispose();
+            console.log('disposed player');
+        }
     });
 
     return player;
@@ -94,7 +99,8 @@ function createMovieHandler(movie: string | object, id?: string) {
 // Для отладки сокращаем лимиты
 updateConfig({
     maxWorkers: 3,
-    playersPerWorker: 2
+    playersPerWorker: 2,
+    cacheFrames: true
 });
 
 createControls();

@@ -5,9 +5,9 @@ export default {
         assetsDir: '',
         sourcemap: true,
         lib: {
-            entry: './src/player.ts',
+            entry: './src/main.ts',
             formats: ['es'],
-            fileName: 'player'
+            fileName: 'main'
         },
         target: 'es2018'
     },

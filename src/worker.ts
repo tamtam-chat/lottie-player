@@ -1,104 +1,41 @@
 import lottieLoader, { RlottieWasm } from './rlottie-wasm';
-import type { ID, WorkerPlayerOptions, ResponseFrame, Request, AdjustablePlayerOptions } from './types';
-
-let rafId: number = 0;
-
-/** Глобальный флаг для остановки всех плееров */
-let paused = false;
+import type { ID, WorkerPlayerOptions, FrameResponse, FrameRequest, WorkerMessage, RequestMap } from './types';
 
 /** Все инстансы плееров */
 const instances = new Map<ID, WorkerPlayerInstace>();
+let RLottie: typeof RlottieWasm;
 
 class WorkerPlayerInstace {
     public id: string | number;
-    public width: number;
-    public height: number;
-    public loop: boolean;
-    public paused = false;
-    public frame = 0;
     public totalFrames = 0;
     public disposed = false;
-
     private player: RlottieWasm | null = null;
 
     constructor(options: WorkerPlayerOptions) {
         this.id = options.id;
-        this.width = options.width || 100;
-        this.height = options.height || 100;
-        this.loop = options.loop ?? true;
-        if (typeof options.autoplay === 'boolean') {
-            this.paused = !options.autoplay;
-        }
-
-        lottieLoader.then(({ RlottieWasm }) => {
-            if (this.disposed) {
-                return;
-            }
-            this.player = new RlottieWasm(options.data);
-            this.totalFrames = this.player.frames();
-        }).catch((err) => {
-            console.error(err);
-            this.disposed = true;
-        });
+        this.player = new RLottie(options.data);
+        this.totalFrames = this.player.frames();
     }
 
-    render(): boolean {
-        if (this.disposed || this.paused) {
-            return false;
-        }
+    /**
+     * Отрисовка указанного кадра
+     * @return Пиксельные данные о кадре или `undefined`, если отрисовать не удалось
+     * (например, плеер ещё не загружен или указали неправильный кадр)
+     */
+    render(frame: number, width: number, height: number): ArrayBuffer | void {
+        const { player, totalFrames } = this;
+        if (player && frame >= 0 && frame < totalFrames) {
+            const data = player.render(frame, width, height);
 
-        if (!this.player) {
-            // Если нет плеера, нужно дождаться, пока появится, поэтому возвращаем
-            // true, чтобы не прерывался цикл
-            return true;
-        }
-
-        if (this.frame >= this.totalFrames) {
-            if (!this.loop) {
-                return false;
-            }
-            this.frame = 0;
-        }
-
-        const { id, width, height, frame, totalFrames } = this;
-        const f = this.player.render(frame, width, height);
-
-        // Из WASM кода возвращается указатель на буффер с кадром внутри WASM-кучи.
-        // Более того, сам буффер переиспользуется для отрисовки последующих
-        // кадров. Из-за этого мы
-        // а) не можем передать его как transferable, так как он должен остаться
-        //    внутри процесса
-        // б) просто передать как аргумент и дать браузеру его скопировать,
-        //    потому что копироваться будет вся WASM-куча
-        // Так что делаем копию буффера вручную
-        const data = copyBuffer(f)
-
-        self.postMessage({
-            type: 'frame',
-            id,
-            width,
-            height,
-            frame,
-            totalFrames,
-            data
-        } as ResponseFrame, [data] as any);
-        this.frame++;
-
-        return true;
-    }
-
-    update(options: AdjustablePlayerOptions, IfRequired?: boolean) {
-        // Обновим данные, если надо
-        if (options.width && (!IfRequired || options.width > this.width)) {
-            this.width = options.width;
-        }
-
-        if (options.height && (!IfRequired || options.height > this.height)) {
-            this.height = options.height;
-        }
-
-        if (options.loop != null) {
-            this.loop = options.loop;
+            // Из WASM кода возвращается указатель на буффер с кадром внутри WASM-кучи.
+            // Более того, сам буффер переиспользуется для отрисовки последующих
+            // кадров. Из-за этого мы
+            // а) не можем передать его как transferable, так как он должен остаться
+            //    внутри процесса
+            // б) просто передать как аргумент и дать браузеру его скопировать,
+            //    потому что копироваться будет вся WASM-куча
+            // Так что делаем копию буффера вручную
+            return copyBuffer(data);
         }
     }
 
@@ -110,112 +47,80 @@ class WorkerPlayerInstace {
     }
 }
 
-function loop() {
-    rafId = 0;
-
-    if (paused) {
-        return;
+function create(options: WorkerPlayerOptions) {
+    const { id } = options;
+    let instance = instances.get(id);
+    if (!instance) {
+        instance = new WorkerPlayerInstace(options);
+        instances.set(id, instance);
     }
 
-    let rendered = false;
+    return instance;
+}
 
-    instances.forEach((instance, key) => {
-        if (instance.disposed) {
-            instances.delete(key);
-        } else if (instance.render()) {
-            rendered = true;
-        }
+function dispose(id: ID) {
+    const instance = instances.get(id);
+    if (instance) {
+        instances.delete(id);
+        instance.dispose();
+    }
+}
+
+/**
+ * Отрисовка кадров для указанных анимаций
+ */
+function render(payload: FrameRequest[]) {
+    const frames: FrameResponse[] = [];
+    payload.forEach(req => {
+        try {
+            const instance = instances.get(req.id);
+            const data = instance?.render(req.frame, req.width, req.height)
+            if (data) {
+                frames.push({ ...req, data });
+            }
+        } catch {}
     });
 
-    if (rendered && instances.size) {
-        rafId = requestAnimationFrame(loop);
-    }
+    return frames;
 }
 
-function play() {
-    paused = false;
-    if (!rafId) {
-        loop();
-    }
-}
+self.addEventListener('message', (evt: MessageEvent<WorkerMessage>) => {
+    const { seq, name, payload } = evt.data
 
-function pause() {
-    paused = true;
-    if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = 0;
-    }
-}
-
-function create(options: WorkerPlayerOptions) {
-    let instance = instances.get(options.id);
-    if (instance) {
-        instance.update(options, true);
-    } else {
-        instance = new WorkerPlayerInstace(options);
-        instances.set(instance.id, instance);
-    }
-
-    if (instances.size === 1 && !paused) {
-        play();
-    }
-}
-
-self.addEventListener('message', (evt: MessageEvent<Request>) => {
-    const payload = evt.data;
-    const instance = 'id' in payload
-        ? instances.get(payload.id)
-        : undefined;
-
-    switch (payload.type) {
+    switch (name) {
         case 'create':
-            create(payload.data);
+            const instance = create(payload);
+            respond(seq, name, { totalFrames: instance.totalFrames });
             break;
         case 'dispose':
-            if (instance) {
-                instance.dispose();
-                instances.delete(payload.id);
-            }
+            dispose(payload.id);
+            respond(seq, name, { ok: true });
             break;
-        case 'playback':
-            if (instance) {
-                instance.paused = payload.paused;
-                if (!instance.paused) {
-                    play();
-                }
-            }
-            break;
-        case 'restart':
-            if (instance) {
-                instance.frame = 0;
-                instance.paused = false;
-                play();
-            }
-            break;
-        case 'update':
-            if (instance) {
-                instance.update(payload.data, payload.ifRequired);
-                play();
-            }
-            break;
-        case 'global-playback':
-            paused = payload.paused;
-            if (paused) {
-                pause();
-            } else {
-                play();
-            }
+        case 'render':
+            const frames = render(payload.frames);
+            respond(seq, name, { frames }, frames.map(f => f.data));
             break;
     }
 });
 
+/**
+ * Быстрое копирование буффера
+ */
 function copyBuffer(src: Uint8Array): ArrayBuffer {
     const dst = new ArrayBuffer(src.byteLength);
     new Uint8Array(dst).set(src);
     return dst;
 }
 
-// Сообщаем, что загрузились
-self.postMessage({
-    type: 'init'
+/**
+ * Ответ на PRC-сообщение
+ */
+function respond<K extends keyof RequestMap>(seq: number, name: K, payload: RequestMap[K][1], transferable?: any) {
+    self.postMessage({ seq, name, payload }, transferable);
+}
+
+lottieLoader.then(({ RlottieWasm }) => {
+    RLottie = RlottieWasm;
+    // Сообщаем, что загрузились
+    self.postMessage({ type: 'init' });
 });

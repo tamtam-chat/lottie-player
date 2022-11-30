@@ -7,37 +7,17 @@ export interface Config {
     /** Оптимальное количество плееров в воркере */
     playersPerWorker: number;
 
-    /** Путь к воркеру или функция, который вернёт путь к воркеру */
+    /**
+     * Кэшировать отрисованные кадры. Это позволит значительно снизить нагрузку
+     * на CPU, так как каждый кадр анимации отрисуется только один раз и при
+     * циклическом воспроизведении будет брать кадр из кэша. Однако это
+     * значительно потребление памяти. Каждый кадр будет занимать
+     * `width × height × (dpr × 2) × 4` байт
+     */
+    cacheFrames: boolean;
+
+    /** Путь к воркеру или функция, которая вернёт путь к воркеру */
     workerUrl: string | (() => string | Promise<string>);
-}
-
-export interface WorkerInfo<T = unknown> {
-    worker?: Worker;
-    players: number;
-    loaded: boolean;
-    queue: WorkerQueueItem<T>[];
-}
-
-export interface WorkerQueueItem<T = unknown> {
-    key: T;
-    message: Request;
-}
-
-export interface FrameData {
-    frame: number;
-    totalFrames: number;
-    image: ImageData;
-}
-
-export interface AdjustablePlayerOptions {
-    /** Ширина кадра для отрисовки */
-    width?: number;
-
-    /** Высота кадра для отрисовки */
-    height?: number;
-
-    /** Воспроизводить в цикле */
-    loop?: boolean;
 }
 
 export interface PlayerOptions {
@@ -74,7 +54,7 @@ export interface PlayerOptions {
     id?: ID;
 }
 
-export interface WorkerPlayerOptions extends AdjustablePlayerOptions {
+export interface WorkerPlayerOptions {
     /**
      * Уникальный идентификатор плеера. Используется для того, чтобы не создавать
      * отдельные инстансы для одной и той же анимации
@@ -83,111 +63,78 @@ export interface WorkerPlayerOptions extends AdjustablePlayerOptions {
 
     /** Данные с анимацией (JSON) */
     data: string;
-
-    /** Сразу воспроизводить анимацию. По умолчанию `true` */
-    autoplay?: boolean;
 }
 
-export type Response = ResponseFrame | ResponseInit;
+/**
+ * Запрос на отрисовку кадра
+ */
+export interface FrameRequest {
+    id: ID;
+    frame: number;
+    width: number;
+    height: number;
+}
 
 /**
- * Данные об отрисованном кадре анимации
+ * Данные об отрисованном кадре
  */
-export interface ResponseFrame {
-    type: 'frame';
+ export interface FrameResponse {
     id: ID;
     width: number;
     height: number;
     frame: number;
-    totalFrames: number;
     data: ArrayBuffer;
 }
 
-/**
- * Сообщение, что воркер загрузился и проинициализировался
- */
-export interface ResponseInit {
-    type: 'init';
+export interface CreateRequest {
+    /**
+     * Уникальный идентификатор плеера. Используется для того, чтобы не создавать
+     * отдельные инстансы для одной и той же анимации
+     */
+    id: ID;
+
+    /** Данные с анимацией (JSON) */
+    data: string;
 }
 
-export type Request = RequestCreate | RequestDispose | RequestTogglePlayback
-    | RequestUpdate | RequestRestart | RequestGlobalTogglePlayback;
-
-/**
- * Создание нового инстанса для отрисовки анимации
- */
-export interface RequestCreate {
-    type: 'create';
-    data: WorkerPlayerOptions;
+export interface CreateResponse {
+    totalFrames: number;
 }
 
-/**
- * Удаление инстанса плеера с указанным ID
- */
-export interface RequestDispose {
-    type: 'dispose';
+export interface CreateResponse {
+    totalFrames: number;
+}
+
+export interface RenderRequest {
+    frames: FrameRequest[]
+}
+
+export interface RenderResponse {
+    frames: FrameResponse[];
+}
+
+export interface DisposeRequest {
     id: ID;
 }
 
-/**
- * Переключение статуса воспроизведения для указанной анимации
- */
-export interface RequestTogglePlayback {
-    type: 'playback';
-    id: ID;
-    paused: boolean;
+export interface DisposeResponse {
+    ok: boolean;
 }
 
-/**
- * Обновление данных о плеере
- */
-export interface RequestUpdate {
-    type: 'update';
-    id: ID;
-    data: AdjustablePlayerOptions;
-    ifRequired?: boolean;
+export type RequestMap = {
+    create: [CreateRequest, CreateResponse];
+    render: [RenderRequest, RenderResponse];
+    dispose: [DisposeRequest, DisposeResponse];
 }
 
-/**
- * Перезапуск воспроизведения плеера, начинает играть с первого кадра
- */
-export interface RequestRestart {
-    type: 'restart';
-    id: ID;
+export interface WorkerRequest<K extends keyof RequestMap> {
+    seq: number;
+    name: K;
+    payload: RequestMap[K][0];
 }
 
-/**
- * Глобальное переключение воспроизведения для всех плееров
- */
- export interface RequestGlobalTogglePlayback {
-    type: 'global-playback';
-    paused: boolean;
-}
-
-export type EventPayload = EventPayloadMount | EventPayloadDispose | EventPayloadInitialRender
-    | EventPayloadPlay | EventPayloadPause | EventPayloadError;
-
-export interface EventPayloadMount {
-    type: 'mount';
-}
-
-export interface EventPayloadDispose {
-    type: 'dispose';
-}
-
-export interface EventPayloadInitialRender {
-    type: 'initial-render';
-}
-
-export interface EventPayloadPlay {
-    type: 'play';
-}
-
-export interface EventPayloadPause {
-    type: 'pause';
-}
-
-export interface EventPayloadError {
-    type: 'error';
-    error: Error;
+export interface WorkerMessage {
+    seq: number;
+    name: keyof RequestMap;
+    payload: any;
 }
