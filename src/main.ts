@@ -332,6 +332,6 @@ function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTM
     }
 
     if (player.frame === player.totalFrames - 1) {
-        player.emit('ended');
+        player.emit('end');
     }
 }

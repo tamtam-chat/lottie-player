@@ -6,7 +6,7 @@ export interface PlayerEventMap {
     mount: [totalFrames: number];
     play: [];
     pause: [];
-    ended: [];
+    end: [];
     rendered: [];
     resize: [width: number, height: number, dpr: number];
     dispose: [];
