@@ -7,7 +7,7 @@ export default {
         lib: {
             entry: './src/main.ts',
             formats: ['es'],
-            fileName: 'player'
+            fileName: 'main'
         },
         target: 'es2018'
     },

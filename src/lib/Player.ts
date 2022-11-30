@@ -128,7 +128,9 @@ export default class Player {
     on<E extends PlayerEventNames>(event: E, callback: (...args: PlayerEventMap[E]) => void): this {
         const listeners = this.listeners[event];
         if (listeners) {
-            listeners.push(callback as Listener)
+            if (!listeners.includes(callback as Listener)) {
+                listeners.push(callback as Listener);
+            }
         } else {
             this.listeners[event] = [callback as Listener];
         }
@@ -159,7 +161,7 @@ export default class Player {
         const listeners = this.listeners[event];
         if (listeners) {
             for (let i = 0; i < listeners.length; i++) {
-                listeners[i].apply(null, args);
+                listeners[i].apply(this, args);
             }
         }
         return this;

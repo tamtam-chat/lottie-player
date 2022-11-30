@@ -1,10 +1,12 @@
 import Player from './lib/Player';
 import { getMovie, isSameSize } from './lib/utils';
 import { allocWorker, releaseWorker, workerPool, type WorkerInstance } from './lib/worker-pool';
-import { FrameRequest, FrameResponse, ID, PlayerOptions, RenderResponse } from './types';
+import { FrameRequest, FrameResponse, ID, PlayerOptions, RenderResponse, Config } from './types';
 import { getConfig } from './lib/config';
 
 export { updateConfig, getConfig } from './lib/config';
+export type { Player };
+export type { PlayerOptions, Config, ID };
 
 interface PlayerRegistryItem {
     id: ID;
@@ -20,6 +22,31 @@ const registry = new Map<ID, PlayerRegistryItem>();
 /** Глобальный флаг для остановки всех плееров */
 let paused = false;
 let rafId: number = 0;
+
+/**
+ * Флаг, указывающий, доступна ли поддержка RLottie в текущей среде
+ */
+export const isSupported = wasmIsSupported() &&
+    typeof Uint8ClampedArray !== 'undefined' &&
+    typeof Worker !== 'undefined' &&
+    typeof ImageData !== 'undefined';
+
+/**
+* Проверка поддержки работы WASM
+*/
+function wasmIsSupported() {
+    try {
+        if (typeof WebAssembly === 'object' &&
+            typeof WebAssembly.instantiate === 'function') {
+            const module = new WebAssembly.Module(Uint8Array.of(0x0, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00));
+
+            if (module instanceof WebAssembly.Module) {
+                return new WebAssembly.Instance(module) instanceof WebAssembly.Instance;
+            }
+        }
+    } catch (e) { }
+    return false;
+}
 
 /**
  * Буфферный canvas, через который будем рисовать кадры другого размера
@@ -75,8 +102,9 @@ export function play() {
  * Остановка воспроизведения всех зарегистрированных плееров
  */
 export function pause() {
-    paused = false;
+    paused = true;
     cancelAnimationFrame(rafId);
+    rafId = 0;
 }
 
 /**
