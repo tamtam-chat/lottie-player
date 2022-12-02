@@ -242,7 +242,13 @@ function render() {
         // Есть данные, которые нужно нарисовать через воркеры
         const promises: Promise<RenderResponse>[] = [];
         workerPayload.forEach((frames, worker) => {
-            promises.push(worker.send('render', { frames }));
+            const req = worker.send('render', { frames })
+                // Возможна ситуация, когда воркер уже размонтировался
+                // в процессе отрисовки кадра, то есть плееры уже не нужны,
+                // но воркер ещё не успел ответить. В этом случае контроллер сфэйлит все
+                // зависшие запросы в воркере, но мы не должны прерываться
+                .catch(() => ({ frames: [] }));
+            promises.push(req);
         });
 
         Promise.all(promises).then(resp => {

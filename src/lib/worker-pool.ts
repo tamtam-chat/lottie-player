@@ -63,9 +63,15 @@ export class WorkerInstance {
     }
 
     dispose() {
+        if (this.requests.size) {
+            this.requests.forEach(req => req.reject(terminateErr()));
+            this.requests.clear();
+        }
+
         if (this.worker) {
             this.worker.removeEventListener('message', this.onMessage);
             this.worker.terminate();
+            this.worker = undefined;
         } else {
             this.fail(terminateErr());
         }
