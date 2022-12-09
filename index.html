@@ -38,6 +38,24 @@
                 gap: 10px;
             }
 
+            #stats {
+                padding: 5px;
+                font-size: 10px;
+                font-family: monospace;
+                color: green;
+                white-space: pre;
+                position: absolute;
+                top: 0;
+                right: 0;
+                background-color: #1a1a1a;
+            }
+
+            .fire {
+                display: flex;
+                flex-wrap: wrap;
+                max-width: 300px;
+            }
+
             button {
                 border-radius: 8px;
                 border: 1px solid transparent;
@@ -67,6 +85,7 @@
     <body>
         <div id="app"></div>
         <div id="controls"></div>
+        <div id="stats"></div>
         <script type="module" src="/src/playground.ts"></script>
     </body>
 </html>

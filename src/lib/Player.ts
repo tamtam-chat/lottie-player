@@ -24,6 +24,7 @@ export default class Player {
     public paused = false;
     public frame = -1;
     public totalFrames = -1;
+    public fps = 60;
 
     private listeners: { [K in PlayerEventNames]?: Listener[] } = {};
 
@@ -33,10 +34,13 @@ export default class Player {
         const height = options.height || canvas.height;
 
         this.canvas = canvas;
-        this.ctx = canvas.getContext('2d')!;
+        this.ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: true })!;
         this.id = options.id || `__lottie${globalId++}`;
         this.dpr = options.dpr || window.devicePixelRatio || 1;
         this.loop = options.loop || false;
+        if (options.fps) {
+            this.fps = options.fps;
+        }
 
         this.resize(width, height);
     }

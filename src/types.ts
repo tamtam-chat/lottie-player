@@ -18,6 +18,11 @@ export interface Config {
 
     /** Путь к воркеру или функция, которая вернёт путь к воркеру */
     workerUrl: string | (() => string | Promise<string>);
+
+    /**
+     * Коллбэк со статистикой рендеринга, используется для отладки
+     */
+    stats?: (stats: RenderStats) => void;
 }
 
 export interface PlayerOptions {
@@ -41,6 +46,9 @@ export interface PlayerOptions {
 
     /** Плотность пикселей на экране. По умолчанию берётся devicePixelRatio */
     dpr?: number;
+
+    /** Скорость воспроизведения ролика, кадров в секунду. По умолчанию 60 */
+    fps?: number;
 
     /**
      * Если указан, все плееры, созданные с таким же ID, будут использовать один
@@ -138,3 +146,23 @@ export interface WorkerMessage {
     name: keyof RequestMap;
     payload: any;
 }
+
+export interface RenderStats {
+    /**
+     * Время, затраченное на отрисовку кадра Lottie-анимации (может быть около
+     * `0`, если используется кэширование кадров)
+     */
+    frameTime: number;
+
+    /**
+     * Время, затраченное на отрисовку кадра для все плееров в группе
+     */
+    paintTime: number;
+
+    /**
+     * Разница по времени между запросами за отрисовкой
+     */
+    tickDelta: number;
+}
+
+export type RenderStatsMap = Record<ID, RenderStats>;

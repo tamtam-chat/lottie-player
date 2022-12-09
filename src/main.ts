@@ -1,7 +1,7 @@
 import Player from './lib/Player';
-import { getMovie, isSameSize } from './lib/utils';
+import { getMovie } from './lib/utils';
 import { allocWorker, releaseWorker, workerPool, type WorkerInstance } from './lib/worker-pool';
-import { FrameRequest, FrameResponse, ID, PlayerOptions, RenderResponse, Config } from './types';
+import { FrameRequest, FrameResponse, ID, PlayerOptions, RenderResponse, Config, RenderStats } from './types';
 import { getConfig } from './lib/config';
 
 export { updateConfig, getConfig } from './lib/config';
@@ -22,6 +22,12 @@ const registry = new Map<ID, PlayerRegistryItem>();
 /** Глобальный флаг для остановки всех плееров */
 let paused = false;
 let rafId: number = 0;
+
+/**
+ * Время предыдущей отрисовки кадра. Используется для получения дельты для кадра,
+ * который нужно нарисовать
+ */
+let prevTime = 0;
 
 /**
  * Флаг, указывающий, доступна ли поддержка RLottie в текущей среде
@@ -104,7 +110,7 @@ export function play() {
 export function pause() {
     paused = true;
     cancelAnimationFrame(rafId);
-    rafId = 0;
+    rafId = prevTime = 0;
 }
 
 /**
@@ -210,8 +216,14 @@ function scheduleRender() {
 /**
  * Цикл отрисовки: рисует следующий кадр для всех зарегистрированных плееров
  */
-function render() {
+function render(time: number) {
     let rendered = false;
+    const tickDelta = prevTime ? time - prevTime : 0;
+    const stats: RenderStats = {
+        frameTime: 0,
+        paintTime: 0,
+        tickDelta
+    };
 
     /** Запросы на отрисовку, распределённые между своими воркерами */
     const workerPayload = new Map<WorkerInstance, FrameRequest[]>();
@@ -223,11 +235,11 @@ function render() {
         if (firstPlaying) {
             // Есть плееры, где надо отрисовать кадры
             rendered = true;
-            const req = toFrameRequest(firstPlaying);
+            const req = toFrameRequest(firstPlaying, tickDelta);
             const cachedFrame = getCachedFrame(req);
             if (cachedFrame) {
-                renderGroup(req.id, req.frame, cachedFrame);
-            } else {
+                stats.paintTime += renderGroup(req.id, req.frame, cachedFrame);
+            } else if (shouldRenderFrame(req.id, req.frame)) {
                 const queue = workerPayload.get(worker);
                 if (queue) {
                     queue.push(req);
@@ -238,8 +250,12 @@ function render() {
         }
     });
 
+    prevTime = time;
+
+
     if (workerPayload.size) {
         // Есть данные, которые нужно нарисовать через воркеры
+        const start = performance.now();
         const promises: Promise<RenderResponse>[] = [];
         workerPayload.forEach((frames, worker) => {
             const req = worker.send('render', { frames })
@@ -252,14 +268,19 @@ function render() {
         });
 
         Promise.all(promises).then(resp => {
+            stats.frameTime = performance.now() - start;
             resp.forEach(payload => {
-                payload.frames.forEach(frame => renderFrameResponse(frame));
+                payload.frames.forEach(frame => {
+                    stats.paintTime += renderFrameResponse(frame);
+                });
             });
+            reportStats(stats);
             restartLoop();
         })
         .catch(() => restartLoop());
     } else {
         // Данных для воркера нет либо отрисовали из кэша
+        reportStats(stats);
         restartLoop(rendered);
     }
 }
@@ -291,12 +312,29 @@ function setCachedFrame(id: ID, frame: number, image: ImageData) {
     }
 }
 
-function toFrameRequest(player: Player, forSize: Player = player): FrameRequest {
+function toFrameRequest(player: Player, timeDelta: number, forSize: Player = player): FrameRequest {
+    let { frame } = player;
+    const maxFrame = player.totalFrames - 1;
+
+    if (frame === maxFrame) {
+        frame = -1;
+    }
+
+    if (timeDelta) {
+        // Указали разницу по времени между отрисовками, выберем нужный кадр
+        const frameTime = 1000 / player.fps;
+        // Добавим немного, чтобы компенсировать потенциальное расхождение,
+        // если вдруг получим что-то вроде 0.9998 и за счёт floor этот срежется до 0
+        frame += Math.floor(timeDelta / frameTime + .1);
+    } else {
+        frame++;
+    }
+
     return {
         id: player.id,
         width: forSize.width,
         height: forSize.height,
-        frame: (player.frame + 1) % player.totalFrames
+        frame: Math.min(frame, maxFrame)
     };
 }
 
@@ -304,13 +342,17 @@ function restartLoop(rendered?: boolean) {
     rafId = 0;
     if (rendered !== false) {
         scheduleRender();
+    } else {
+        prevTime = 0;
     }
 }
 
 /**
- * Отрисовка кадра из ответа от воркера
+ * Отрисовка кадра из ответа от воркера.
+ * Вернёт время, затраченное на отрисовку
  */
-function renderFrameResponse(payload: FrameResponse) {
+function renderFrameResponse(payload: FrameResponse): number {
+    const start = performance.now();
     const { id } = payload;
     if (registry.has(id)) {
         const clampedBuffer = new Uint8ClampedArray(payload.data);
@@ -322,16 +364,36 @@ function renderFrameResponse(payload: FrameResponse) {
 
         renderGroup(id, payload.frame, image);
     }
+
+    return performance.now() - start;
 }
 
-function renderGroup(id: ID, frame: number, image: ImageData) {
-    let prevRendered: HTMLCanvasElement | undefined;
-    registry.get(id)?.players.forEach(player => {
-        if (isPlaying(player)) {
-            renderFrame(player, frame, image, prevRendered);
-            prevRendered = player.canvas;
+/**
+ * Отрисовка кадра для указанной группы. Вернёт время, затраченное на отрисовку
+ */
+function renderGroup(id: ID, frame: number, image: ImageData): number {
+    const start = performance.now();
+    const item = registry.get(id);
+    // let prevRendered: HTMLCanvasElement | undefined;
+
+    if (item) {
+        const { players } = item;
+        const lastPlayer = players.length - 1;
+        for (let i = 0; i < players.length; i++) {
+            const player = players[i];
+            if (isPlaying(player) && shouldRenderPlayer(player, frame)) {
+                renderFrame(player, frame, image);
+                // prevRendered = player.canvas;
+
+                const { width, height } = player;
+                if (i !== lastPlayer && (image.width !== width || image.height !== height)) {
+                    image = player.ctx.getImageData(0, 0, width, height);
+                }
+            }
         }
-    });
+    }
+
+    return performance.now() - start;
 }
 
 /**
@@ -340,8 +402,9 @@ function renderGroup(id: ID, frame: number, image: ImageData) {
 function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTMLCanvasElement) {
     const isInitial = player.frame === -1;
     const { ctx, canvas } = player;
+    const { width, height } = canvas;
 
-    if (isSameSize(canvas, image)) {
+    if (image.width === width && image.height === height) {
         // putImage — самый быстрый вариант, будем использовать его, если размер подходит
         ctx.putImageData(image, 0, 0);
     } else {
@@ -355,7 +418,6 @@ function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTM
             prev = bufCanvas;
         }
 
-        const { width, height } = canvas;
         ctx.clearRect(0, 0, width, height);
         ctx.drawImage(prev, 0, 0, width, height);
     }
@@ -367,5 +429,32 @@ function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTM
 
     if (player.frame === player.totalFrames - 1) {
         player.emit('end');
+    }
+}
+
+/**
+ * Вернёт `true`, если в указанной группе необходимо отрисовать указанный кадр.
+ * В частности проверяет, был этот кадр уже отрисован
+ */
+function shouldRenderFrame(id: ID, frame: number): boolean {
+    const item = registry.get(id);
+    if (item) {
+        return item.players.some(p => shouldRenderPlayer(p, frame));
+    }
+
+    return false;
+}
+
+/**
+ * Вернёт `true` если указанный кадр нужно нарисорвать в плеере
+ */
+function shouldRenderPlayer(player: Player, frame: number): boolean {
+    return player.totalFrames !== -1 && player.frame !== frame;
+}
+
+function reportStats(data: RenderStats) {
+    const { stats } = getConfig();
+    if (stats) {
+        stats(data);
     }
 }

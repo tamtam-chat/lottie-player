@@ -1,11 +1,16 @@
-import { createPlayer, updateConfig, getInternals } from './main';
+import { createPlayer, updateConfig, getInternals, Player } from './main';
+import { RenderStats } from './types';
 import acrobatics from './assets/acrobatics.json?inline';
 import emojiWink from './assets/emoji_wink.json?inline';
 import heart from './assets/heart.json?url';
 import loader from './assets/gradient_sleepy_loader.json?inline';
 
+const fireMovie = 'https://st.mycdn.me/static/messages/2022-11-30lottie/e/10.json';
+
 const app = document.getElementById('app')!
 const controls = document.getElementById('controls')!;
+const statsElem = document.getElementById('stats')!;
+const statsItems: RenderStats[] = [];
 
 let width = 100;
 let height = 100;
@@ -46,6 +51,36 @@ function createMovie(opt: MovieOptions) {
     return player;
 }
 
+function createFire(amount: number) {
+    const fire = document.createElement('div');
+    fire.className = 'fire';
+    const players: Player[] = [];
+    let first = true;
+    while (amount--) {
+        const canvas = document.createElement('canvas');
+        fire.appendChild(canvas);
+
+        const player = createPlayer({
+            width: first ? 50 : 20,
+            height: first ? 50 : 20,
+            id: 'fire',
+            loop: true,
+            canvas,
+            movie: fireMovie,
+        });
+        players.push(player);
+        first = false;
+    }
+
+    fire.addEventListener('click', () => {
+        players.forEach(p => p.dispose());
+        players.length = 0;
+        fire.remove();
+    });
+
+    app.appendChild(fire);
+}
+
 function createButton(label: string, onClick?: (evt: MouseEvent) => void) {
     const btn = document.createElement('button');
     btn.innerText = label;
@@ -82,6 +117,7 @@ function createControls() {
     createButton('Emoji wink', createMovieHandler(emojiWink));
     createButton('Heart', createMovieHandler(new URL(heart, location.href).href));
     createButton('Loader', createMovieHandler(loader, 'gradient'));
+    createButton('Fire', () => createFire(400));
 
     createButton('Log internals', () => console.log(getInternals()));
 }
@@ -100,7 +136,27 @@ function createMovieHandler(movie: string | object, id?: string) {
 updateConfig({
     maxWorkers: 3,
     playersPerWorker: 2,
-    cacheFrames: true
+    cacheFrames: true,
+    stats(data) {
+        statsItems.push(data);
+        while (statsItems.length > 50) {
+            statsItems.shift();
+        }
+
+        let frameTime = 0;
+        let paintTime = 0;
+        let tickDelta = 0;
+
+        const avg = (value: number) => (value / statsItems.length).toFixed(2);
+
+        statsItems.forEach(item => {
+            frameTime += item.frameTime;
+            paintTime += item.paintTime;
+            tickDelta += item.tickDelta;
+        });
+
+        statsElem.innerHTML = `Frame time: ${avg(frameTime)}ms\nPaint time: ${avg(paintTime)}ms\nTick: ${avg(tickDelta)}ms`;
+    }
 });
 
 createControls();
