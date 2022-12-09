@@ -381,21 +381,21 @@ function renderFrameResponse(payload: FrameResponse): number {
 function renderGroup(id: ID, frame: number, image: ImageData): number {
     const start = performance.now();
     const item = registry.get(id);
-    // let prevRendered: HTMLCanvasElement | undefined;
+    let prevRendered: HTMLCanvasElement | undefined;
 
     if (item) {
         const { players } = item;
-        const lastPlayer = players.length - 1;
+        // const lastPlayer = players.length - 1;
         for (let i = 0; i < players.length; i++) {
             const player = players[i];
             if (isPlaying(player) && shouldRenderPlayer(player, frame)) {
-                renderFrame(player, frame, image);
-                // prevRendered = player.canvas;
+                renderFrame(player, frame, image, prevRendered);
+                prevRendered = player.canvas;
 
-                const { width, height } = player;
-                if (i !== lastPlayer && (image.width !== width || image.height !== height)) {
-                    image = player.ctx.getImageData(0, 0, width, height);
-                }
+                // const { width, height } = player;
+                // if (i !== lastPlayer && (image.width !== width || image.height !== height)) {
+                //     image = player.ctx.getImageData(0, 0, width, height);
+                // }
             }
         }
     }

@@ -137,6 +137,7 @@ updateConfig({
     maxWorkers: 3,
     playersPerWorker: 2,
     cacheFrames: true,
+    maxRender: 100,
     stats(data) {
         statsItems.push(data);
         while (statsItems.length > 50) {
