@@ -30,6 +30,12 @@ let rafId: number = 0;
 let prevTime = 0;
 
 /**
+ * Количество плееров, которые можно отрисовать. -1 означает, что рисуем всё,
+ * 0 — нарисуем только один кадр, > 0 — можно обновить текущий плеер
+ */
+let maxPlayerRender = -1;
+
+/**
  * Флаг, указывающий, доступна ли поддержка RLottie в текущей среде
  */
 export const isSupported = wasmIsSupported() &&
@@ -218,6 +224,7 @@ function scheduleRender() {
  */
 function render(time: number) {
     let rendered = false;
+    maxPlayerRender = getConfig().maxRender || -1;
     const tickDelta = prevTime ? time - prevTime : 0;
     const stats: RenderStats = {
         frameTime: 0,
@@ -403,23 +410,30 @@ function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTM
     const isInitial = player.frame === -1;
     const { ctx, canvas } = player;
     const { width, height } = canvas;
+    const shouldRender = maxPlayerRender === -1 || maxPlayerRender > 0 || isInitial;
 
-    if (image.width === width && image.height === height) {
-        // putImage — самый быстрый вариант, будем использовать его, если размер подходит
-        ctx.putImageData(image, 0, 0);
-    } else {
-        if (!prev) {
-            // Нет предыдущего отрисованный canvas, который можно отмасштабировать
-            // до нужного размера: используем буфферный
-            bufCanvas.width = image.width
-            bufCanvas.height = image.height;
-            const bufCtx = bufCanvas.getContext('2d')!;
-            bufCtx.putImageData(image, 0, 0);
-            prev = bufCanvas;
+    if (shouldRender) {
+        if (image.width === width && image.height === height) {
+            // putImage — самый быстрый вариант, будем использовать его, если размер подходит
+            ctx.putImageData(image, 0, 0);
+        } else {
+            if (!prev) {
+                // Нет предыдущего отрисованный canvas, который можно отмасштабировать
+                // до нужного размера: используем буфферный
+                bufCanvas.width = image.width
+                bufCanvas.height = image.height;
+                const bufCtx = bufCanvas.getContext('2d')!;
+                bufCtx.putImageData(image, 0, 0);
+                prev = bufCanvas;
+            }
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(prev, 0, 0, width, height);
         }
 
-        ctx.clearRect(0, 0, width, height);
-        ctx.drawImage(prev, 0, 0, width, height);
+        if (maxPlayerRender > 0) {
+            maxPlayerRender--;
+        }
     }
 
     player.frame = frame;

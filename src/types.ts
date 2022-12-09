@@ -16,6 +16,11 @@ export interface Config {
      */
     cacheFrames: boolean;
 
+    /**
+     * Максимальное количество плееров, которые можно отрисовать за один кадр
+     */
+    maxRender?: number;
+
     /** Путь к воркеру или функция, которая вернёт путь к воркеру */
     workerUrl: string | (() => string | Promise<string>);
 
