@@ -1,4 +1,4 @@
-import lottieLoader, { RlottieWasm } from './rlottie-wasm';
+import lottieLoader, { type RlottieWasm } from './rlottie-wasm';
 import type { ID, WorkerPlayerOptions, FrameResponse, FrameRequest, WorkerMessage, RequestMap } from './types';
 
 /** Все инстансы плееров */

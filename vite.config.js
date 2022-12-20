@@ -26,6 +26,7 @@ export default {
         ...getBuildConfig()
     },
     worker: {
+        format: process.env.BUILD === 'demo' ? 'es' : 'iife',
         rollupOptions: {
             output: {
                 entryFileNames: '[name].js'
