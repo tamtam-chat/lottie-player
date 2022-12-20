@@ -18,7 +18,6 @@ jobs:
       - name: Build
         run: |
           npm i
-          npm t
           npm run build-demo
 
       - name: GitHub Pages action
