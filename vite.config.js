@@ -1,15 +1,28 @@
+/** @return {import('vite').BuildOptions} */
+function getBuildConfig() {
+    if (process.env.BUILD === 'demo') {
+        return {
+            outDir: './public',
+        }
+    }
+
+    return {
+        lib: {
+            entry: './src/main.ts',
+            formats: ['es'],
+            fileName: 'main'
+        }
+    };
+}
+
 /** @type {import('vite').UserConfig} */
 export default {
     build: {
         outDir: './dist',
         assetsDir: '',
         sourcemap: true,
-        lib: {
-            entry: './src/main.ts',
-            formats: ['es'],
-            fileName: 'main'
-        },
-        target: 'es2018'
+        target: 'es2018',
+        ...getBuildConfig()
     },
     worker: {
         rollupOptions: {
