@@ -160,4 +160,23 @@ updateConfig({
     }
 });
 
+function setupFilePicker() {
+    const picker = document.getElementById('lottie-picker') as HTMLInputElement;
+    if (picker) {
+        picker.addEventListener('change', async () => {
+            const file = picker.files?.[0];
+            if (file) {
+                const movie = await file.text();
+                createMovie({
+                    width: 200,
+                    height: 200,
+                    movie,
+                    loop: true
+                });
+            }
+        });
+    }
+}
+
 createControls();
+setupFilePicker();

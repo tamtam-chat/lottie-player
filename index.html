@@ -80,11 +80,20 @@
             canvas {
                 background: rgba(0, 0, 0, 0.2);
             }
+
+            .pick {
+                font-size: 1.2em;
+                margin: 20px 0;
+            }
         </style>
     </head>
     <body>
         <div id="app"></div>
         <div id="controls"></div>
+        <div class="pick">
+            <label for="lottie-picker">Pick file</label>
+            <input type="file" name="lottie" id="lottie-picker" />
+        </div>
         <div id="stats"></div>
         <script type="module" src="/src/playground.ts"></script>
     </body>
