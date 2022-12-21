@@ -168,8 +168,8 @@ function setupFilePicker() {
             if (file) {
                 const movie = await file.text();
                 createMovie({
-                    width: 200,
-                    height: 200,
+                    width: 400,
+                    height: 400,
                     movie,
                     loop: true
                 });
