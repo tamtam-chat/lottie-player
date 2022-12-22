@@ -173,6 +173,7 @@ function setupFilePicker() {
                     movie,
                     loop: true
                 });
+                picker.value = '';
             }
         });
     }
