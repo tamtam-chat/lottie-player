@@ -25,6 +25,7 @@ export default class Player {
     public frame = -1;
     public totalFrames = -1;
     public fps = 60;
+    public disposed = false;
 
     private listeners: { [K in PlayerEventNames]?: Listener[] } = {};
 
@@ -121,6 +122,7 @@ export default class Player {
      * Удаляет текущий экземпляр плеера
      */
     dispose() {
+        this.disposed = true;
         this.frame = this.totalFrames = -1;
         this.emit('dispose');
         this.listeners = {};
