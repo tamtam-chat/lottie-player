@@ -261,7 +261,7 @@ function render(time: number) {
             if (!item.start) {
                 // Записываем время начала воспроизведения минус
                 // смещение, чтобы начать отрисовывать с указанного кадра
-                item.start = time - (item.frame * firstPlaying.frameTime);
+                item.start = time - ((item.frame % firstPlaying.lastFrame) * firstPlaying.frameTime);
             }
 
             const req = toFrameRequest(firstPlaying, time - item.start);
@@ -278,6 +278,7 @@ function render(time: number) {
             }
             item.frame = req.frame;
         } else {
+            // Нет активных плееров: сбрасываем время начала воспроизведения
             item.start = 0;
         }
     });
@@ -344,17 +345,17 @@ function setCachedFrame(id: ID, frame: number, image: ImageData) {
     }
 }
 
-function toFrameRequest(player: Player, elapsed: number, forSize: Player = player): FrameRequest {
+function toFrameRequest(player: Player, elapsed: number): FrameRequest {
     // В аругументе elapsed указано, сколько времени прошло с начала воспроизведения
     // плеера — посчитаем из него кадр
-    const maxFrame = player.totalFrames - 1;
-    const frame = Math.floor(elapsed / player.frameTime) % maxFrame;
+    let frame = Math.floor(elapsed / player.frameTime);
+    frame = player.loop ? frame % player.lastFrame : Math.min(frame, player.lastFrame);
 
     return {
         id: player.id,
-        width: forSize.width,
-        height: forSize.height,
-        frame: Math.min(frame, maxFrame)
+        width: player.width,
+        height: player.height,
+        frame
     };
 }
 
@@ -454,7 +455,8 @@ function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTM
         player.emit('rendered');
     }
 
-    if (player.frame === player.totalFrames - 1) {
+    if (isFinished(player)) {
+        player.pause();
         player.emit('end');
     }
 }
@@ -484,4 +486,8 @@ function reportStats(data: RenderStats) {
     if (stats) {
         stats(data);
     }
+}
+
+function isFinished(player: Player) {
+    return !player.loop && player.frame === player.lastFrame;
 }

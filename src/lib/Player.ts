@@ -62,12 +62,27 @@ export default class Player {
         return 1000 / this.fps;
     }
 
+    get lastFrame() {
+        return this.totalFrames - 1;
+    }
+
     /**
      * Запускает воспроизведение анимации
      */
     play() {
+        let shouldPlay = false;
+
         if (this.paused) {
             this.paused = false;
+            shouldPlay = true;
+        }
+
+        if (this.loop && this.frame === this.lastFrame) {
+            this.frame = 0;
+            shouldPlay = true;
+        }
+
+        if (shouldPlay) {
             this.emit('play');
         }
     }
