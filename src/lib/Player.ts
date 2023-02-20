@@ -1,9 +1,9 @@
-import type { ID, PlayerOptions } from '../types';
+import type { CreateResponse, ID, PlayerOptions } from '../types';
 
 let globalId = 0;
 
 export interface PlayerEventMap {
-    mount: [totalFrames: number];
+    mount: [totalFrames: number, frameRate: number];
     play: [];
     pause: [];
     end: [];
@@ -24,7 +24,7 @@ export default class Player {
     public paused = false;
     public frame = -1;
     public totalFrames = -1;
-    public fps = 60;
+    public frameRate = 60;
     public disposed = false;
 
     private listeners: { [K in PlayerEventNames]?: Listener[] } = {};
@@ -40,7 +40,7 @@ export default class Player {
         this.dpr = options.dpr || window.devicePixelRatio || 1;
         this.loop = options.loop || false;
         if (options.fps) {
-            this.fps = options.fps;
+            this.frameRate = options.fps;
         }
 
         this.resize(width, height);
@@ -59,7 +59,7 @@ export default class Player {
     }
 
     get frameTime() {
-        return 1000 / this.fps;
+        return 1000 / this.frameRate;
     }
 
     get lastFrame() {
@@ -130,10 +130,11 @@ export default class Player {
     /**
      * Вызывается в момент, когда для указанного плеера смонтировался воркер.
      */
-    mount(totalFrames: number) {
+    mount(data: CreateResponse) {
         if (!this.mounted) {
-            this.totalFrames = totalFrames;
-            this.emit('mount', totalFrames);
+            this.totalFrames = data.totalFrames;
+            this.frameRate = data.frameRate || 60;
+            this.emit('mount', this.totalFrames, data.frameRate);
         }
     }
 

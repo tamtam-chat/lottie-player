@@ -8,6 +8,7 @@ let RLottie: typeof RlottieWasm;
 class WorkerPlayerInstace {
     public id: string | number;
     public totalFrames = 0;
+    public frameRate = 0;
     public disposed = false;
     private player: RlottieWasm | null = null;
 
@@ -15,6 +16,7 @@ class WorkerPlayerInstace {
         this.id = options.id;
         this.player = new RLottie(options.data);
         this.totalFrames = this.player.frames();
+        this.frameRate = this.player.frameRate();
     }
 
     /**
@@ -90,7 +92,10 @@ self.addEventListener('message', (evt: MessageEvent<WorkerMessage>) => {
     switch (name) {
         case 'create':
             const instance = create(payload);
-            respond(seq, name, { totalFrames: instance.totalFrames });
+            respond(seq, name, {
+                totalFrames: instance.totalFrames,
+                frameRate: instance.frameRate
+            });
             break;
         case 'dispose':
             dispose(payload.id);

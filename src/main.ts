@@ -17,6 +17,9 @@ interface PlayerRegistryItem {
     /** Последний отрисованный кадр */
     frame: number;
 
+    /** FPS текущей анимации */
+    frameRate: number;
+
     /** Всего кадров в анимации */
     totalFrames: number;
 
@@ -152,7 +155,7 @@ function registerPlayer(player: Player, movie: PlayerOptions['movie']) {
         item.players.push(player);
         orderInstances(id);
         if (item.worker) {
-            player.mount(item.totalFrames);
+            player.mount(item);
             scheduleRender();
         }
     } else {
@@ -160,6 +163,7 @@ function registerPlayer(player: Player, movie: PlayerOptions['movie']) {
             id,
             frame: 0,
             totalFrames: -1,
+            frameRate: 60,
             start: 0,
             players: [player]
         };
@@ -171,11 +175,16 @@ function registerPlayer(player: Player, movie: PlayerOptions['movie']) {
         Promise.all([allocWorker(), getMovie(movie)]).then(([worker, data]) => {
             // Создаём плеер для ролика
             worker.send('create', { id, data }).then(resp => {
+                console.log('create data', resp);
+
                 // Убедимся, что запись всё ещё присутствует и актуальна
                 if (registry.get(id) === item) {
                     item.worker = worker;
                     item.totalFrames = resp.totalFrames;
-                    item.players.forEach(player => player.mount(resp.totalFrames));
+                    if (resp.frameRate) {
+                        item.frameRate = resp.frameRate;
+                    }
+                    item.players.forEach(player => player.mount(resp));
                     scheduleRender();
                 } else {
                     releaseWorker(worker);

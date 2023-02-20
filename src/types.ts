@@ -112,6 +112,7 @@ export interface CreateRequest {
 
 export interface CreateResponse {
     totalFrames: number;
+    frameRate: number;
 }
 
 export interface CreateResponse {
