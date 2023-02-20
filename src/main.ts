@@ -10,9 +10,23 @@ export type { PlayerOptions, Config, ID };
 
 interface PlayerRegistryItem {
     id: ID;
+
+    /** Зарегистрированные плееры */
     players: Player[];
+
+    /** Последний отрисованный кадр */
+    frame: number;
+
+    /** Всего кадров в анимации */
     totalFrames: number;
+
+    /** Время начала воспроизведения */
+    start: number;
+
+    /** Кэш отрисованных кадров */
     frameCache?: ImageData[];
+
+    /** Инстанс воркера-отрисовщика, закреплённого за текущим элементом */
     worker?: WorkerInstance;
 }
 
@@ -144,7 +158,9 @@ function registerPlayer(player: Player, movie: PlayerOptions['movie']) {
     } else {
         const item: PlayerRegistryItem = {
             id,
+            frame: 0,
             totalFrames: -1,
+            start: 0,
             players: [player]
         };
         registry.set(id, item);
@@ -242,7 +258,13 @@ function render(time: number) {
         if (firstPlaying) {
             // Есть плееры, где надо отрисовать кадры
             rendered = true;
-            const req = toFrameRequest(firstPlaying, tickDelta);
+            if (!item.start) {
+                // Записываем время начала воспроизведения минус
+                // смещение, чтобы начать отрисовывать с указанного кадра
+                item.start = time - (item.frame * firstPlaying.frameTime);
+            }
+
+            const req = toFrameRequest(firstPlaying, time - item.start);
             const cachedFrame = getCachedFrame(req);
             if (cachedFrame) {
                 stats.paintTime += renderGroup(req.id, req.frame, cachedFrame);
@@ -254,6 +276,9 @@ function render(time: number) {
                     workerPayload.set(worker, [req]);
                 }
             }
+            item.frame = req.frame;
+        } else {
+            item.start = 0;
         }
     });
 
@@ -319,23 +344,11 @@ function setCachedFrame(id: ID, frame: number, image: ImageData) {
     }
 }
 
-function toFrameRequest(player: Player, timeDelta: number, forSize: Player = player): FrameRequest {
-    let { frame } = player;
+function toFrameRequest(player: Player, elapsed: number, forSize: Player = player): FrameRequest {
+    // В аругументе elapsed указано, сколько времени прошло с начала воспроизведения
+    // плеера — посчитаем из него кадр
     const maxFrame = player.totalFrames - 1;
-
-    if (frame === maxFrame) {
-        frame = -1;
-    }
-
-    if (timeDelta) {
-        // Указали разницу по времени между отрисовками, выберем нужный кадр
-        const frameTime = 1000 / player.fps;
-        // Добавим немного, чтобы компенсировать потенциальное расхождение,
-        // если вдруг получим что-то вроде 0.9998 и за счёт floor этот срежется до 0
-        frame += Math.floor(timeDelta / frameTime + .1);
-    } else {
-        frame++;
-    }
+    const frame = Math.floor(elapsed / player.frameTime) % maxFrame;
 
     return {
         id: player.id,

@@ -58,6 +58,10 @@ export default class Player {
         return this.totalFrames !== -1;
     }
 
+    get frameTime() {
+        return 1000 / this.fps;
+    }
+
     /**
      * Запускает воспроизведение анимации
      */
