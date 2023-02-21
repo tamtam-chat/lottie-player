@@ -175,8 +175,6 @@ function registerPlayer(player: Player, movie: PlayerOptions['movie']) {
         Promise.all([allocWorker(), getMovie(movie)]).then(([worker, data]) => {
             // Создаём плеер для ролика
             worker.send('create', { id, data }).then(resp => {
-                console.log('create data', resp);
-
                 // Убедимся, что запись всё ещё присутствует и актуальна
                 if (registry.get(id) === item) {
                     item.worker = worker;
