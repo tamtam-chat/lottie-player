@@ -26,6 +26,7 @@ export default class Player {
     public totalFrames = -1;
     public frameRate = 60;
     public disposed = false;
+    public fill: string | undefined;
 
     private listeners: { [K in PlayerEventNames]?: Listener[] } = {};
 
@@ -41,6 +42,10 @@ export default class Player {
         this.loop = options.loop || false;
         if (options.fps) {
             this.frameRate = options.fps;
+        }
+
+        if (options.fill) {
+            this.fill = options.fill;
         }
 
         this.resize(width, height);

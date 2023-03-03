@@ -429,12 +429,12 @@ function renderGroup(id: ID, frame: number, image: ImageData): number {
  */
 function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTMLCanvasElement) {
     const isInitial = player.frame === -1;
-    const { ctx, canvas } = player;
+    const { ctx, canvas, fill } = player;
     const { width, height } = canvas;
     const shouldRender = maxPlayerRender === -1 || maxPlayerRender > 0 || isInitial;
 
     if (shouldRender) {
-        if (image.width === width && image.height === height) {
+        if (image.width === width && image.height === height && !fill) {
             // putImage — самый быстрый вариант, будем использовать его, если размер подходит
             ctx.putImageData(image, 0, 0);
         } else {
@@ -448,8 +448,17 @@ function renderFrame(player: Player, frame: number, image: ImageData, prev?: HTM
                 prev = bufCanvas;
             }
 
-            ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(prev, 0, 0, width, height);
+            if (fill) {
+                ctx.save();
+                ctx.fillStyle = fill;
+                ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.drawImage(prev, 0, 0, width, height);
+                ctx.restore();
+            } else {
+                ctx.clearRect(0, 0, width, height);
+                ctx.drawImage(prev, 0, 0, width, height);
+            }
         }
 
         if (maxPlayerRender > 0) {

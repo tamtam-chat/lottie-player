@@ -4,6 +4,7 @@ import acrobatics from './assets/acrobatics.json?inline';
 import emojiWink from './assets/emoji_wink.json?inline';
 import heart from './assets/heart.json?url';
 import loader from './assets/gradient_sleepy_loader.json?inline';
+import textTyping from './assets/text.json?inline';
 
 const fireMovie = 'https://st.mycdn.me/static/messages/2022-11-30lottie/e/10.json';
 
@@ -21,6 +22,7 @@ interface MovieOptions {
     width: number;
     height: number;
     loop?: boolean;
+    fill?: string;
 }
 
 function createMovie(opt: MovieOptions) {
@@ -117,6 +119,16 @@ function createControls() {
     createButton('Emoji wink', createMovieHandler(emojiWink));
     createButton('Heart', createMovieHandler(new URL(heart, location.href).href));
     createButton('Loader', createMovieHandler(loader, 'gradient'));
+    createButton('Typing', () => {
+        createMovie({
+            id: 'typing',
+            movie: textTyping,
+            loop: true,
+            width: 100,
+            height: 100,
+            fill: '#ccc'
+        });
+    });
     createButton('Fire', () => createFire(400));
 
     createButton('Log internals', () => console.log(getInternals()));
