@@ -1,22 +1,49 @@
-import lottieLoader, { type RlottieWasm } from './rlottie-wasm';
+import { Module } from './rlottie-wasm';
 import type { ID, WorkerPlayerOptions, FrameResponse, FrameRequest, WorkerMessage, RequestMap } from './types';
 
 /** Все инстансы плееров */
 const instances = new Map<ID, WorkerPlayerInstace>();
-let RLottie: typeof RlottieWasm;
+ interface RlottiePlayerAPI {
+    init(): number;
+    loadFromData(handle: number, stringOnWasmHeap: number): number;
+    frameCount(): number;
+    buffer(handle: number): number;
+    render(handle: number, frame: number): void;
+    destroy(): void;
+    resize(handle: number, width: number, height: number): void;
+}
 
 class WorkerPlayerInstace {
     public id: string | number;
     public totalFrames = 0;
-    public frameRate = 0;
+    public frameRate = 60;
+    public handle: number;
     public disposed = false;
-    private player: RlottieWasm | null = null;
+    public width = 0;
+    public height = 0;
+    private stringOnWasmHeap: number;
+    private player: RlottiePlayerAPI = {
+        init: Module.cwrap('lottie_init', '', []),
+        destroy: Module.cwrap('lottie_destroy', '', ['number']),
+        resize: Module.cwrap('lottie_resize', '', ['number', 'number', 'number']),
+        buffer: Module.cwrap('lottie_buffer', 'number', ['number']),
+        frameCount: Module.cwrap('lottie_frame_count', 'number', ['number']),
+        render: Module.cwrap('lottie_render', '', ['number', 'number']),
+        loadFromData: Module.cwrap('lottie_load_from_data', 'number', ['number', 'number']),
+    };
 
-    constructor(options: WorkerPlayerOptions) {
+    public constructor(options: WorkerPlayerOptions) {
+        try {
+            // @FIXME: Memory bottleneck fix it via https://github.com/Samsung/rlottie/issues/540
+            const fps = JSON.parse(options.data)?.fr;
+
+            this.frameRate = Math.max(1, Math.min(60, fps || 60));
+        } catch (e) {}
+
         this.id = options.id;
-        this.player = new RLottie(options.data);
-        this.totalFrames = this.player.frames();
-        this.frameRate = this.player.frameRate();
+        this.handle = this.player.init();
+        this.stringOnWasmHeap = Module.allocate(Module.intArrayFromString(options.data), 'i8', 0);
+        this.totalFrames = this.player.loadFromData(this.handle, this.stringOnWasmHeap);
     }
 
     /**
@@ -24,10 +51,21 @@ class WorkerPlayerInstace {
      * @return Пиксельные данные о кадре или `undefined`, если отрисовать не удалось
      * (например, плеер ещё не загружен или указали неправильный кадр)
      */
-    render(frame: number, width: number, height: number): ArrayBuffer | void {
-        const { player, totalFrames } = this;
+    public render(frame: number, width: number, height: number): ArrayBuffer | undefined {
+        const { player: player, totalFrames } = this;
         if (player && frame >= 0 && frame < totalFrames) {
-            const data = player.render(frame, width, height);
+            // const data = player.render(frame, width, height);
+
+            if (this.width !== width || this.height !== height) {
+                this.player.resize(this.handle, width, height);
+                this.width = width;
+                this.height = height;
+            }
+
+            this.player.render(this.handle, frame);
+
+            const bufferPointer = this.player.buffer(this.handle);
+            const data = Module.HEAPU8.subarray(bufferPointer, bufferPointer + (this.width * this.height * 4));
 
             // Из WASM кода возвращается указатель на буффер с кадром внутри WASM-кучи.
             // Более того, сам буффер переиспользуется для отрисовки последующих
@@ -39,12 +77,13 @@ class WorkerPlayerInstace {
             // Так что делаем копию буффера вручную
             return copyBuffer(data);
         }
+
+        return;
     }
 
-    dispose() {
+    public dispose() {
         // Для удаления инстанса в Emscripten
-        this.player?.delete?.();
-        this.player = null;
+        this.player?.destroy?.();
         this.disposed = true;
     }
 }
@@ -73,10 +112,10 @@ function dispose(id: ID) {
  */
 function render(payload: FrameRequest[]) {
     const frames: FrameResponse[] = [];
-    payload.forEach(req => {
+    payload.forEach((req: FrameRequest) => {
         try {
             const instance = instances.get(req.id);
-            const data = instance?.render(req.frame, req.width, req.height)
+            const data = instance?.render(req.frame, req.width, req.height);
             if (data) {
                 frames.push({ ...req, data });
             }
@@ -87,14 +126,14 @@ function render(payload: FrameRequest[]) {
 }
 
 self.addEventListener('message', (evt: MessageEvent<WorkerMessage>) => {
-    const { seq, name, payload } = evt.data
+    const { seq, name, payload } = evt.data;
 
     switch (name) {
         case 'create':
             const instance = create(payload);
             respond(seq, name, {
                 totalFrames: instance.totalFrames,
-                frameRate: instance.frameRate
+                frameRate: instance.frameRate,
             });
             break;
         case 'dispose':
@@ -103,7 +142,7 @@ self.addEventListener('message', (evt: MessageEvent<WorkerMessage>) => {
             break;
         case 'render':
             const frames = render(payload.frames);
-            respond(seq, name, { frames }, frames.map(f => f.data));
+            respond(seq, name, { frames }, frames.map((f: FrameResponse) => f.data));
             break;
     }
 });
@@ -124,8 +163,9 @@ function respond<K extends keyof RequestMap>(seq: number, name: K, payload: Requ
     self.postMessage({ seq, name, payload }, transferable);
 }
 
-lottieLoader.then(({ RlottieWasm }) => {
-    RLottie = RlottieWasm;
+Module.onRuntimeInitialized = function() {
     // Сообщаем, что загрузились
     self.postMessage({ type: 'init' });
-});
+
+    return void 0;
+};
