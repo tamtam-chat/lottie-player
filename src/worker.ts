@@ -9,7 +9,7 @@ const instances = new Map<ID, WorkerPlayerInstace>();
     frameCount(): number;
     buffer(handle: number): number;
     render(handle: number, frame: number): void;
-    destroy(): void;
+    destroy(handle: number): void;
     resize(handle: number, width: number, height: number): void;
 }
 
@@ -83,7 +83,7 @@ class WorkerPlayerInstace {
 
     public dispose() {
         // Для удаления инстанса в Emscripten
-        this.player?.destroy?.();
+        this.player?.destroy?.(this.handle);
         this.disposed = true;
     }
 }
