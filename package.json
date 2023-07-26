@@ -14,6 +14,7 @@
     "dev": "vite",
     "build": "vite build && tsc",
     "build-demo": "BUILD=demo vite build",
+    "build-amd": "BUILD=amd vite build",
     "watch": "vite build --watch --no-emptyOutDir",
     "prepare": "npm run build"
   },

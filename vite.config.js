@@ -6,6 +6,17 @@ function getBuildConfig() {
         }
     }
 
+    if (process.env.BUILD === 'amd') {
+        return {
+            lib: {
+                entry: './src/main.ts',
+                formats: ['amd'],
+                fileName: 'lottie-player',
+                name: 'lottiePlayer'
+            }
+        }
+    }
+
     return {
         lib: {
             entry: './src/main.ts',
@@ -13,6 +24,29 @@ function getBuildConfig() {
             fileName: 'main'
         }
     };
+}
+
+/** @return {import('vite').ResolveWorkerOptions} */
+function getWorkerConfig() {
+    if (process.env.BUILD === 'amd') {
+        return {
+            format: 'es',
+            rollupOptions: {
+                output: {
+                    entryFileNames: 'lottie-player-worker.js'
+                }
+            }
+        }
+    }
+
+    return {
+        format: process.env.BUILD === 'demo' ? 'es' : 'iife',
+        rollupOptions: {
+            output: {
+                entryFileNames: '[name].js'
+            }
+        }
+    }
 }
 
 /** @type {import('vite').UserConfig} */
@@ -26,11 +60,6 @@ export default {
         ...getBuildConfig()
     },
     worker: {
-        format: process.env.BUILD === 'demo' ? 'es' : 'iife',
-        rollupOptions: {
-            output: {
-                entryFileNames: '[name].js'
-            }
-        }
+        ...getWorkerConfig(),
     }
 }
