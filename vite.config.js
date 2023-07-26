@@ -9,8 +9,9 @@ function getBuildConfig() {
     return {
         lib: {
             entry: './src/main.ts',
-            formats: ['es'],
-            fileName: 'main'
+            formats: ['es', 'amd'],
+            fileName: 'main',
+            name: 'lottiePlayer',
         }
     };
 }
