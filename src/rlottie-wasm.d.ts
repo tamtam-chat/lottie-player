@@ -1,31 +1,36 @@
-declare class RlottieWasm {
-    constructor(jsonData: string);
-
+declare const Module = {
     /**
-     * Загружает анимацию из указанного JSON-файла.
-     * @returns `true` если анимация успешно загрузилась и может воспроизводиться
+     * Обертка для проброса методов из бинарника
      */
-    load(jsonData: string): boolean;
-
-    /** Возвращает количество кадров у указанной анимации */
-    frames(): number;
-
-    /** Возвращает FPS у указанной анимации */
-    frameRate(): number;
-
+    cwrap: (fnName: string, returnType: string, args: string[]) => unknown,
     /**
-     * Отрисовывает указанный номер кадра (начиная с 0)
+     * Хук для определения состояния готовности wasm инфраструктуры и воркера
      */
-    render(frame: number, width: number, height: number): Uint8Array;
-
+    onRuntimeInitialized: () => undefined,
     /**
-     * Внутренний метод, добавляемый Emscripten, для удаления инстансов,
-     * полученных из C++
-     * https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html?highlight=typed_memory_view#memory-management
+     * Выделяет память в wasm куче для последующей работой с ней, возвращает указатель на кучу
      */
-    delete(): void;
+    allocate: (slab: number, types: string, allocator: number, ptr?: number) => number,
+    /**
+     * Создает буфер из строки в нужной размерности бит
+     */
+    intArrayFromString: (str: string) => number,
+    /**
+     * Прочие служебные методы работы с бинарным модуляем
+     * @FIXME: Поправить тайпинги и аннотации
+     */
+    run: () => void 0,
+    preInit: () => void 0,
+    locateFile: () => void 0,
+    inspect: () => void 0,
+    print: () => void 0,
+    printErr: () => void 0,
+    HEAPU8: unknown,
+    arguments: unknown,
+    thisProgram: unknown,
+    quit: unknown,
 }
 
-const loader: Promise<{ RlottieWasm: typeof RlottieWasm }>;
-export default loader;
-export type { RlottieWasm };
+export {
+    Module
+}
