@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>RLottie player</title>
+        <style>
+            :root {
+                font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+                font-size: 16px;
+                line-height: 24px;
+                font-weight: 400;
+
+                color-scheme: light dark;
+                color: rgba(255, 255, 255, 0.87);
+                background-color: #242424;
+            }
+
+            body {
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                place-items: center;
+                min-width: 320px;
+                min-height: 100vh;
+            }
+
+            #app {
+                max-width: 1280px;
+                margin: 0 auto;
+                padding: 2rem;
+                min-height: 200px;
+                text-align: center;
+            }
+
+            #controls {
+                display: flex;
+                gap: 10px;
+            }
+
+            #stats {
+                padding: 5px;
+                font-size: 10px;
+                font-family: monospace;
+                color: green;
+                white-space: pre;
+                position: absolute;
+                top: 0;
+                right: 0;
+                background-color: #1a1a1a;
+            }
+
+            .fire {
+                display: flex;
+                flex-wrap: wrap;
+                max-width: 300px;
+            }
+
+            button {
+                border-radius: 8px;
+                border: 1px solid transparent;
+                padding: 0.6em 1.2em;
+                font-size: 1em;
+                font-weight: 500;
+                font-family: inherit;
+                background-color: #1a1a1a;
+                cursor: pointer;
+                transition: border-color 0.25s;
+            }
+
+            button:hover {
+                border-color: #646cff;
+            }
+
+            button:focus,
+            button:focus-visible {
+                outline: 4px auto -webkit-focus-ring-color;
+            }
+
+            canvas {
+                background: rgba(0, 0, 0, 0.2);
+            }
+
+            .pick {
+                font-size: 1.6em;
+                margin: 20px 0;
+            }
+
+            #lottie-picker {
+                font-size: inherit;
+            }
+        </style>
+      <script type="module" crossorigin src="./index.f4b5e746.js"></script>
+    </head>
+    <body>
+        <div id="app"></div>
+        <div id="controls"></div>
+        <div class="pick">
+            <label for="lottie-picker">Pick file</label>
+            <input type="file" name="lottie" id="lottie-picker" />
+        </div>
+        <div id="stats"></div>
+        
+    </body>
+</html>
