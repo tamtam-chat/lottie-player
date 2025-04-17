@@ -179,9 +179,11 @@ function setupFilePicker() {
             const file = picker.files?.[0];
             if (file) {
                 const movie = await file.text();
+                const movieData = JSON.parse(movie)
+
                 createMovie({
-                    width: 400,
-                    height: 400,
+                    width: movieData.w || 400,
+                    height: movieData.h || 400,
                     movie,
                     loop: true
                 });
